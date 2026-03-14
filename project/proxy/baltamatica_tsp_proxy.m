@@ -14,8 +14,7 @@ disp(["本地服务地址：http://" config.host ":" num2str(config.port)]);
 disp("提示：请勿关闭此窗口，关闭后前端将无法调用计算能力");
 disp("=====================================");
 %% ==================== 内嵌Python HTTP服务（适配v3.6内置Python） ====================
-pycode = sprintf(`
-import sys
+pycode = sprintf(['import sys
 import json
 import time
 import subprocess
@@ -642,7 +641,7 @@ if __name__ == "__main__":
     # 保持脚本常驻运行
     while True:
         time.sleep(1)
-`, json.dumps([str(x) for x in config.allow_origin]), config.port, config.host, config.max_exec_time);
+'], json.dumps([str(x) for x in config.allow_origin]), config.port, config.host, config.max_exec_time);
 
 %% ==================== 执行Python代码，启动服务 ====================
 py.exec(pycode);

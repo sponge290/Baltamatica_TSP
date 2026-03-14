@@ -2,17 +2,17 @@
 % 文件名：baltamatica_tsp_proxy.m
 % 用法：直接在北太天元v3.6中打开，点击运行即可，无需任何修改
 %% ==================== 配置项（仅需修改此处） ====================
-config.allow_origin = {'http://localhost:3000'}; % 允许的前端域名
+config.allow_origin = ["http://localhost:3000"]; % 允许的前端域名
 config.port = 18080; % 固定端口，与前端保持一致
 config.max_exec_time = 120; % 算法最大执行时间（秒）
 config.host = "127.0.0.1"; % 仅监听本地，禁止修改为0.0.0.0
 %% ==================== 启动提示 ====================
-disp('=====================================');
-disp('天气感知型TSP 本地代理服务启动成功');
-disp(['前端允许域名：' config.allow_origin{1}]);
-disp(['本地服务地址：http://' config.host ':' num2str(config.port)]);
-disp('提示：请勿关闭此窗口，关闭后前端将无法调用计算能力');
-disp('=====================================');
+disp("=====================================");
+disp("天气感知型TSP 本地代理服务启动成功");
+disp(["前端允许域名：" join(config.allow_origin, "、")]);
+disp(["本地服务地址：http://" config.host ":" num2str(config.port)]);
+disp("提示：请勿关闭此窗口，关闭后前端将无法调用计算能力");
+disp("=====================================");
 %% ==================== 内嵌Python HTTP服务（适配v3.6内置Python） ====================
 pycode = sprintf(`
 import sys

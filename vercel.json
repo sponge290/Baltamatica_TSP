@@ -1,6 +1,16 @@
 {
-  "installCommand": "cd project/frontend && npm ci",
-  "buildCommand": "cd project/frontend && npm run build",
-  "outputDirectory": "project/frontend/dist"
+  "builds": [
+    {
+      "src": "project/frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
 }
 

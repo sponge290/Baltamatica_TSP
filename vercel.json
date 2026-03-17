@@ -1,4 +1,5 @@
 {
+  "installCommand": "npm install",
   "builds": [
     {
       "src": "project/frontend/package.json",

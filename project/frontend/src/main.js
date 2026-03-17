@@ -1,14 +1,18 @@
 import axios from 'axios';
 import * as d3 from 'd3';
+import { createClient } from '@supabase/supabase-js';
 
-const EDGE_FUNCTION_URL = 'https://ajcipfdxqjsxztbrabvl.supabase.co/functions/v1/solve-tsp';
-const API_BASE_URL = 'http://localhost:8000/api';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const EDGE_FUNCTION_URL = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/solve-tsp` : null;
+const supabase = (SUPABASE_URL && SUPABASE_ANON_KEY) ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 let currentSection = 'home-section';
 let calculationResults = [];
 
 window.addEventListener('DOMContentLoaded', () => {
   initializeApp();
+  loadSharedSolutionFromUrl();
 });
 
 function initializeApp() {
@@ -71,6 +75,60 @@ function setupEventListeners() {
   document.getElementById('compare-case-select').addEventListener('change', initCompareChart);
 }
 
+async function loadSharedSolutionFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const solutionId = params.get('solution');
+    if (!solutionId) return;
+
+    if (!supabase) {
+      alert('未配置 Supabase：无法加载分享结果。请在 .env 中设置 VITE_SUPABASE_URL 与 VITE_SUPABASE_ANON_KEY');
+      return;
+    }
+
+    const { data: sol, error: solError } = await supabase
+      .from('route_solutions')
+      .select('solution_id, case_id, algorithm, total_cost, total_time, exec_time, reliability, route_sequence, is_public, created_at')
+      .eq('solution_id', solutionId)
+      .single();
+    if (solError) throw solError;
+
+    const { data: nodes, error: nodesError } = await supabase
+      .from('route_nodes')
+      .select('city_id, visit_order, arrival_time, departure_time, weather_condition')
+      .eq('solution_id', solutionId)
+      .order('visit_order', { ascending: true });
+    if (nodesError) throw nodesError;
+
+    const bestPath = Array.isArray(sol.route_sequence) ? sol.route_sequence : (sol.route_sequence || []);
+    const resultData = {
+      algorithm: sol.algorithm,
+      total_cost: sol.total_cost,
+      total_time: sol.total_time,
+      exec_time: sol.exec_time,
+      reliability: sol.reliability,
+      best_path: bestPath,
+      nodes: nodes || [],
+      solution_id: sol.solution_id,
+      case_id: sol.case_id,
+      is_public: sol.is_public
+    };
+
+    try {
+      const testCaseSelect = document.getElementById('test-case-select');
+      if (testCaseSelect && sol.case_id != null) testCaseSelect.value = String(sol.case_id);
+    } catch {}
+
+    calculationResults = [{ algorithm: sol.algorithm, ...resultData, path: bestPath, solution_id: sol.solution_id }];
+    showSection('solve-section');
+    updateVisualization(sol.algorithm, resultData);
+    showResultModal();
+  } catch (e) {
+    console.error('加载分享结果失败:', e);
+    alert(`加载分享结果失败：${e?.message || String(e)}`);
+  }
+}
+
 function setupVisualizationTabs() {
   const tabs = document.querySelectorAll('[data-tab]');
   tabs.forEach(tab => {
@@ -110,6 +168,10 @@ function setupAlgorithmParameters() {
 }
 
 async function startCalculation() {
+  if (!EDGE_FUNCTION_URL) {
+    alert('未配置 Supabase：请在 .env 中设置 VITE_SUPABASE_URL 与 VITE_SUPABASE_ANON_KEY');
+    return;
+  }
   const selectedAlgorithms = Array.from(document.querySelectorAll('.algorithm-checkbox:checked'))
     .map(checkbox => checkbox.value);
   
@@ -139,7 +201,7 @@ async function startCalculation() {
       const result = await runTSPAlgorithm(algorithm, problemData, params, testCaseId);
       
       if (result.code === 200) {
-        calculationResults.push({ algorithm, ...result.data, path: result.data.best_path });
+        calculationResults.push({ algorithm, ...result.data, path: result.data.best_path, solution_id: result.data.solution_id });
         log(`${algorithm} 算法执行成功`);
         updateVisualization(algorithm, result.data);
       } else {
@@ -177,27 +239,36 @@ async function saveResult() {
     alert('请先执行算法计算');
     return;
   }
-  
-  const testCaseId = document.getElementById('test-case-select').value;
-  let allSaved = true;
-  
-  for (let i = 0; i < calculationResults.length; i++) {
+
+  // 纯云端链路：solve-tsp Edge Function 已在云端写入 route_solutions / route_nodes。
+  // 此按钮的含义调整为“设为公开（可被历史记录读取/可分享）”。
+  if (!supabase) {
+    alert('未配置 Supabase：请在 .env 中设置 VITE_SUPABASE_URL 与 VITE_SUPABASE_ANON_KEY');
+    return;
+  }
+
+  const missing = calculationResults.filter(r => !r.solution_id);
+  if (missing.length > 0) {
+    alert('当前结果缺少 solution_id（请先重新计算，或确认 Edge Function 已返回 solution_id）');
+    return;
+  }
+
+  let allOk = true;
+  for (const r of calculationResults) {
     try {
-      const result = calculationResults[i];
-      const solutionId = await uploadSolutionResult(testCaseId, result.algorithm, result);
-      calculationResults[i].solution_id = solutionId;
-      log(`结果已保存，ID: ${solutionId}`);
-    } catch (error) {
-      log(`保存结果失败: ${error.message}`);
-      allSaved = false;
+      const { error } = await supabase
+        .from('route_solutions')
+        .update({ is_public: true })
+        .eq('solution_id', r.solution_id);
+      if (error) throw error;
+      log(`结果已设为公开，ID: ${r.solution_id}`);
+    } catch (e) {
+      allOk = false;
+      log(`设置公开失败: ${e?.message || String(e)}`);
     }
   }
-  
-  if (allSaved) {
-    alert('结果保存成功');
-  } else {
-    alert('部分结果保存失败，请查看日志');
-  }
+
+  alert(allOk ? '已设为公开，可在历史记录查看并分享' : '部分设置失败，请查看日志');
 }
 
 function shareResult() {
@@ -215,7 +286,7 @@ function shareResult() {
       alert('复制失败，请手动复制链接');
     });
   } else {
-    alert('请先保存结果后再分享');
+    alert('请先计算并确保返回 solution_id；如需公开请点击“保存结果（设为公开）”');
   }
 }
 
@@ -289,30 +360,19 @@ async function runTSPAlgorithm(algorithm, problemData, params, caseId) {
   }
 }
 
-async function uploadSolutionResult(caseId, algorithm, resultData) {
-  try {
-    const res = await axios.post(`${API_BASE_URL}/solutions`, {
-      case_id: caseId,
-      algorithm,
-      total_cost: resultData.total_cost,
-      total_time: resultData.total_time,
-      reliability: resultData.reliability,
-      exec_time: resultData.exec_time,
-      path: resultData.path || resultData.best_path,
-      nodes: resultData.nodes,
-      is_public: false
-    });
-    return res.data.solution_id;
-  } catch (error) {
-    console.error('上传结果失败:', error);
-    throw error;
-  }
-}
-
 async function loadHistoryRecords() {
+  if (!supabase) {
+    console.error('Supabase 未配置，无法加载历史记录');
+    return;
+  }
   try {
-    const res = await axios.get(`${API_BASE_URL}/solutions`);
-    const data = res.data.data;
+    const { data, error } = await supabase
+      .from('route_solutions')
+      .select('solution_id, case_id, algorithm, total_cost, total_time, exec_time, reliability, is_public, created_at')
+      .eq('is_public', true)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
 
     const tableBody = document.getElementById('history-table-body');
     if (data.length === 0) {
@@ -322,15 +382,14 @@ async function loadHistoryRecords() {
 
     tableBody.innerHTML = data.map(record => `
       <tr>
-        <td class="px-6 py-4">测试用例 ${record.case_id}</td>
+        <td class="px-6 py-4">${record.case_id}</td>
         <td class="px-6 py-4">${record.algorithm}</td>
         <td class="px-6 py-4">${record.total_cost.toFixed(2)}</td>
         <td class="px-6 py-4">${record.total_time.toFixed(2)}</td>
         <td class="px-6 py-4">${record.exec_time.toFixed(2)} ms</td>
         <td class="px-6 py-4">${record.reliability ? record.reliability.toFixed(2) : 'N/A'}</td>
         <td class="px-6 py-4">
-          <button class="text-primary hover:underline">查看</button>
-          ${record.is_public ? '<button class="text-green-600 hover:underline ml-2">已分享</button>' : '<button class="text-primary hover:underline ml-2">分享</button>'}
+          <button class="text-primary hover:underline" onclick="navigator.clipboard.writeText('${window.location.origin}?solution=${record.solution_id}'); alert('分享链接已复制')">复制分享链接</button>
         </td>
       </tr>
     `).join('');

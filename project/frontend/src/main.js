@@ -1,7 +1,7 @@
 import axios from 'axios';
 import * as d3 from 'd3';
 
-const EDGE_FUNCTION_URL = 'https://baltamatica-tsp.supabase.co/functions/v1/solve-tsp';
+const EDGE_FUNCTION_URL = 'https://ajcipfdxqjsxztbrabvl.supabase.co/functions/v1/solve-tsp';
 const API_BASE_URL = 'http://localhost:8000/api';
 
 let currentSection = 'home-section';

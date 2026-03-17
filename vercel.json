@@ -1,5 +1,6 @@
 {
-  "buildCommand": "npm run build",
+  "installCommand": "cd project/frontend && npm ci",
+  "buildCommand": "cd project/frontend && npm run build",
   "outputDirectory": "project/frontend/dist"
 }
 

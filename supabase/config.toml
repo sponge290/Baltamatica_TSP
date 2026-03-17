@@ -1,0 +1,4 @@
+[global]
+  project_id = "baltamatica-tsp"
+  supabase_url = "https://baltamatica-tsp.supabase.co"
+  supabase_service_key = "your_service_key_here"

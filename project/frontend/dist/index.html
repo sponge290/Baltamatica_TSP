@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>天气感知型 TSP 求解系统</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="/assets/css/tailwind.min.css" rel="stylesheet">
+  <link href="/assets/css/font-awesome.min.css" rel="stylesheet">
+  <script src="/assets/js/chart.umd.min.js"></script>
   <style>
     :root {
       --primary: #3b82f6;
@@ -24,7 +24,7 @@
     .text-dark { color: var(--dark); }
     .transition-shadow { transition: box-shadow 0.3s ease; }
   </style>
-  <script type="module" crossorigin src="/assets/index-BXap8aOG.js"></script>
+  <script type="module" crossorigin src="/assets/index-DeE5GNlt.js"></script>
 </head>
 <body class="bg-gray-50 min-h-screen">
   <!-- 导航栏 -->
@@ -40,53 +40,39 @@
         <a href="#" class="text-gray-700 hover:text-primary font-medium" id="nav-compare">结果对比</a>
         <a href="#" class="text-gray-700 hover:text-primary font-medium" id="nav-history">历史记录</a>
         <a href="#" class="text-gray-700 hover:text-primary font-medium" id="nav-help">帮助文档</a>
-        <div class="flex items-center space-x-2" id="connection-status">
-          <span class="h-3 w-3 rounded-full bg-red-500" id="status-indicator"></span>
-          <span class="text-sm text-gray-600" id="status-text">未连接</span>
-          <button class="text-xs bg-primary text-white px-2 py-1 rounded hover:bg-primary/80" id="check-connection">检测</button>
-        </div>
+  
       </div>
     </div>
   </nav>
 
   <!-- 主内容区 -->
   <main class="container mx-auto px-4 py-6">
-    <!-- 首页/引导页 -->
+    <!-- 首页 -->
     <section id="home-section" class="block">
       <div class="bg-white rounded-lg shadow-lg p-8 mb-8">
         <h1 class="text-3xl font-bold text-center mb-6 text-dark">欢迎使用天气感知型 TSP 求解系统</h1>
-        <p class="text-gray-600 text-center mb-8">本系统基于北太天元v3.6实现，支持动态规划、A*和遗传算法，考虑天气因素对路径规划的影响</p>
+        <p class="text-gray-600 text-center mb-8">本系统基于Supabase Edge Functions全Serverless架构实现，支持动态规划、A*和遗传算法，考虑天气因素对路径规划的影响</p>
         
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <div class="bg-blue-50 p-6 rounded-lg border border-blue-200">
-            <div class="text-primary text-4xl text-center mb-4"><i class="fa fa-download"></i></div>
-            <h3 class="text-xl font-semibold text-center mb-2">步骤1：下载代理脚本</h3>
-            <p class="text-gray-600 text-center">下载本地代理脚本，用于连接前端与北太天元</p>
-            <div class="mt-4 text-center">
-              <a href="/proxy/baltamatica_tsp_proxy.m" download class="inline-block bg-primary text-white px-4 py-2 rounded hover:bg-primary/80">
-                <i class="fa fa-download mr-2"></i>下载代理脚本
-              </a>
-            </div>
+            <div class="text-primary text-4xl text-center mb-4"><i class="fa fa-bolt"></i></div>
+            <h3 class="text-xl font-semibold text-center mb-2">零配置</h3>
+            <p class="text-gray-600 text-center">无需本地软件，无需下载脚本</p>
           </div>
           <div class="bg-green-50 p-6 rounded-lg border border-green-200">
-            <div class="text-secondary text-4xl text-center mb-4"><i class="fa fa-play-circle"></i></div>
-            <h3 class="text-xl font-semibold text-center mb-2">步骤2：运行北太天元</h3>
-            <p class="text-gray-600 text-center">在北太天元v3.6中打开并运行代理脚本</p>
-            <div class="mt-4 text-center">
-              <a href="https://www.baltamatica.com" target="_blank" class="inline-block bg-secondary text-white px-4 py-2 rounded hover:bg-secondary/80">
-                <i class="fa fa-external-link mr-2"></i>北太天元官网
-              </a>
-            </div>
+            <div class="text-secondary text-4xl text-center mb-4"><i class="fa fa-globe"></i></div>
+            <h3 class="text-xl font-semibold text-center mb-2">随时随地</h3>
+            <p class="text-gray-600 text-center">打开浏览器即可使用，全球访问</p>
           </div>
           <div class="bg-purple-50 p-6 rounded-lg border border-purple-200">
-            <div class="text-accent text-4xl text-center mb-4"><i class="fa fa-refresh"></i></div>
-            <h3 class="text-xl font-semibold text-center mb-2">步骤3：刷新连接</h3>
-            <p class="text-gray-600 text-center">点击检测按钮，确认本地代理连接成功</p>
-            <div class="mt-4 text-center">
-              <button class="inline-block bg-accent text-white px-4 py-2 rounded hover:bg-accent/80" id="refresh-connection">
-                <i class="fa fa-refresh mr-2"></i>检测连接
-              </button>
-            </div>
+            <div class="text-accent text-4xl text-center mb-4"><i class="fa fa-share-alt"></i></div>
+            <h3 class="text-xl font-semibold text-center mb-2">一键分享</h3>
+            <p class="text-gray-600 text-center">生成分享链接，他人无需安装即可查看</p>
+          </div>
+          <div class="bg-yellow-50 p-6 rounded-lg border border-yellow-200">
+            <div class="text-yellow-600 text-4xl text-center mb-4"><i class="fa fa-cloud"></i></div>
+            <h3 class="text-xl font-semibold text-center mb-2">全Serverless</h3>
+            <p class="text-gray-600 text-center">基于Supabase Edge Functions，零服务器运维</p>
           </div>
         </div>
 
@@ -297,15 +283,13 @@
         <div class="space-y-6">
           <div>
             <h3 class="text-lg font-medium mb-2">系统介绍</h3>
-            <p class="text-gray-600">天气感知型TSP求解系统是一个基于北太天元v3.6的路径规划工具，考虑天气因素对旅行时间的影响，支持多种算法求解。</p>
+            <p class="text-gray-600">天气感知型TSP求解系统是一个基于Supabase Edge Functions全Serverless架构的路径规划工具，考虑天气因素对旅行时间的影响，支持多种算法求解。</p>
           </div>
           <div>
             <h3 class="text-lg font-medium mb-2">使用步骤</h3>
             <ol class="list-decimal list-inside text-gray-600 space-y-2">
-              <li>下载并运行本地代理脚本</li>
-              <li>在北太天元v3.6中执行代理脚本</li>
               <li>在本网站选择测试用例和算法</li>
-              <li>点击开始计算，等待结果</li>
+              <li>点击开始计算，等待云端执行结果</li>
               <li>查看可视化结果和性能指标</li>
             </ol>
           </div>
@@ -321,16 +305,12 @@
             <h3 class="text-lg font-medium mb-2">常见问题</h3>
             <div class="space-y-3">
               <div>
-                <p class="font-medium">Q: 本地代理连接失败怎么办？</p>
-                <p class="text-gray-600">A: 请检查北太天元是否正常运行，代理脚本是否已执行，端口是否被占用。</p>
-              </div>
-              <div>
                 <p class="font-medium">Q: 算法执行超时怎么办？</p>
                 <p class="text-gray-600">A: 对于大规模问题，建议使用遗传算法，并调整参数以减少计算时间。</p>
               </div>
               <div>
                 <p class="font-medium">Q: 结果如何分享给他人？</p>
-                <p class="text-gray-600">A: 保存结果后，系统会生成唯一分享链接，其他人无需安装北太天元即可查看。</p>
+                <p class="text-gray-600">A: 保存结果后，系统会生成唯一分享链接，其他人打开链接即可查看。</p>
               </div>
             </div>
           </div>
@@ -347,7 +327,7 @@
           <p>天气感知型 TSP 求解系统 &copy; 2026</p>
         </div>
         <div>
-          <p class="text-sm text-gray-400">本工具仅提供算法参数配置与可视化功能，所有计算均在用户本地执行</p>
+          <p class="text-sm text-gray-400">基于Supabase Edge Functions全Serverless架构，所有计算均在云端执行</p>
         </div>
       </div>
     </div>

@@ -108,7 +108,7 @@ class DataImporter:
                     'end_city_id': int(row['end_city_id']),
                     'distance': float(row['distance']),
                     'road_type': str(row['road_type']) if pd.notna(row['road_type']) else None,
-                    'speed_limit': float(row['speed_limit'])
+                    'speed_limit': int(row['speed_limit'])
                 }
                 segments_data.append(segment)
             

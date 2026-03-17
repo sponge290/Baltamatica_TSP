@@ -1,6 +1,8 @@
 # Node / frontend
 **/node_modules/
 **/dist/
+package-lock.json
+project/frontend/package-lock.json
 
 # Python
 **/__pycache__/

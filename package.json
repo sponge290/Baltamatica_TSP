@@ -1,6 +1,9 @@
 {
   "name": "baltamatica-tsp",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "workspaces": [
     "project/frontend"
   ],

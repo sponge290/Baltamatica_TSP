@@ -1,4 +1,1 @@
-[global]
-  project_id = "ajcipfdxqjsxztbrabvl"
-  supabase_url = "https://ajcipfdxqjsxztbrabvl.supabase.co"
-  supabase_service_key = "your_service_key_here"
+project_id = "ajcipfdxqjsxztbrabvl"

@@ -6,10 +6,20 @@ import { solveGA } from "./algorithms/ga.ts";
 import { validateRequest } from "./utils/constraints.ts";
 import type { SolveTSPRequest, TSPSolution } from "./utils/types.ts";
 
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-);
+const sbUrl =
+  Deno.env.get("EDGE_SUPABASE_URL") ??
+  Deno.env.get("SUPABASE_URL"); // legacy fallback (some environments may still provide it)
+const sbServiceRoleKey =
+  Deno.env.get("EDGE_SUPABASE_SERVICE_ROLE_KEY") ??
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"); // legacy fallback
+
+if (!sbUrl || !sbServiceRoleKey) {
+  throw new Error(
+    "Missing Edge Function secrets: EDGE_SUPABASE_URL and EDGE_SUPABASE_SERVICE_ROLE_KEY"
+  );
+}
+
+const supabase = createClient(sbUrl, sbServiceRoleKey);
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {

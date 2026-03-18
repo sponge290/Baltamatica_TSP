@@ -179,8 +179,26 @@ async function startCalculation() {
     alert('请至少选择一种算法');
     return;
   }
-  
+
   const testCaseId = document.getElementById('test-case-select').value;
+  // #region agent log
+  fetch('http://127.0.0.1:7294/ingest/f0eba27f-2002-416a-a3de-da9ea50eda5a',{
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'X-Debug-Session-Id':'0a6aff'
+    },
+    body:JSON.stringify({
+      sessionId:'0a6aff',
+      runId:'pre-fix',
+      hypothesisId:'A',
+      location:'src/main.js:176',
+      message:'startCalculation invoked',
+      data:{ EDGE_FUNCTION_URL, selectedAlgorithms, testCaseId },
+      timestamp:Date.now()
+    })
+  }).catch(()=>{});
+  // #endregion
   const gaParams = {
     pop_size: parseInt(document.getElementById('population-size').value),
     max_generations: parseInt(document.getElementById('max-generations').value),
@@ -345,17 +363,94 @@ async function getProblemData(testCaseId) {
 
 async function runTSPAlgorithm(algorithm, problemData, params, caseId) {
   try {
-    const res = await axios.post(EDGE_FUNCTION_URL, {
-      case_id: parseInt(caseId),
-      algorithm,
-      cities: problemData.cities,
-      time_windows: problemData.time_windows,
-      weather_data: problemData.weather_data,
-      road_segments: problemData.road_segments,
-      params
-    }, { timeout: 120000 });
+    // #region agent log
+    fetch('http://127.0.0.1:7294/ingest/f0eba27f-2002-416a-a3de-da9ea50eda5a',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'X-Debug-Session-Id':'0a6aff'
+      },
+      body:JSON.stringify({
+        sessionId:'0a6aff',
+        runId:'pre-fix',
+        hypothesisId:'B',
+        location:'src/main.js:348',
+        message:'runTSPAlgorithm request payload',
+        data:{
+          EDGE_FUNCTION_URL,
+          algorithm,
+          caseId,
+          hasCities: !!problemData?.cities,
+          hasRoadSegments: !!problemData?.road_segments,
+          params
+        },
+        timestamp:Date.now()
+      })
+    }).catch(()=>{});
+    // #endregion
+
+    const res = await axios.post(
+      EDGE_FUNCTION_URL,
+      {
+        case_id: parseInt(caseId),
+        algorithm,
+        cities: problemData.cities,
+        time_windows: problemData.time_windows,
+        weather_data: problemData.weather_data,
+        road_segments: problemData.road_segments,
+        params
+      },
+      {
+        timeout: 120000,
+        headers: SUPABASE_ANON_KEY
+          ? {
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`
+            }
+          : undefined
+      }
+    );
+    // #region agent log
+    fetch('http://127.0.0.1:7294/ingest/f0eba27f-2002-416a-a3de-da9ea50eda5a',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'X-Debug-Session-Id':'0a6aff'
+      },
+      body:JSON.stringify({
+        sessionId:'0a6aff',
+        runId:'pre-fix',
+        hypothesisId:'C',
+        location:'src/main.js:357',
+        message:'runTSPAlgorithm response',
+        data:{
+          status: res.status,
+          data: typeof res.data === 'object' ? { code: res.data.code, msg: res.data.msg } : null
+        },
+        timestamp:Date.now()
+      })
+    }).catch(()=>{});
+    // #endregion
     return res.data;
   } catch (e) {
+    // #region agent log
+    fetch('http://127.0.0.1:7294/ingest/f0eba27f-2002-416a-a3de-da9ea50eda5a',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'X-Debug-Session-Id':'0a6aff'
+      },
+      body:JSON.stringify({
+        sessionId:'0a6aff',
+        runId:'pre-fix',
+        hypothesisId:'D',
+        location:'src/main.js:359',
+        message:'runTSPAlgorithm error',
+        data:{ message: e?.message || String(e), name: e?.name },
+        timestamp:Date.now()
+      })
+    }).catch(()=>{});
+    // #endregion
     return { code: 500, msg: '请求失败', error: e.message };
   }
 }

@@ -6,6 +6,14 @@ import { solveGA } from "./algorithms/ga.ts";
 import { validateRequest } from "./utils/constraints.ts";
 import type { SolveTSPRequest, TSPSolution } from "./utils/types.ts";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  // Must include custom headers used by Supabase + browser clients, otherwise the browser will block POST after preflight.
+  "Access-Control-Allow-Headers":
+    "authorization, apikey, content-type, x-client-info, x-supabase-api-version",
+};
+
 const sbUrl =
   Deno.env.get("EDGE_SUPABASE_URL") ??
   Deno.env.get("SUPABASE_URL"); // legacy fallback (some environments may still provide it)
@@ -24,11 +32,7 @@ const supabase = createClient(sbUrl, sbServiceRoleKey);
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-      },
+      headers: corsHeaders,
     });
   }
 
@@ -39,7 +43,7 @@ serve(async (req) => {
     if (!validation.valid) {
       return new Response(JSON.stringify({ code: 400, msg: validation.error }), {
         status: 400,
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
 
@@ -97,7 +101,7 @@ serve(async (req) => {
     (solution as any).solution_id = solData.solution_id;
 
     return new Response(JSON.stringify({ code: 200, data: solution }), {
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
 
   } catch (error) {
@@ -108,7 +112,7 @@ serve(async (req) => {
       error: error instanceof Error ? error.message : "未知错误" 
     }), {
       status: 500,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   }
 });

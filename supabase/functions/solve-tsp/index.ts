@@ -66,39 +66,45 @@ serve(async (req) => {
     
     solution.exec_time = Date.now() - startTime;
 
-    // 同步写库并返回 solution_id，方便前端“保存/分享/历史”闭环验证
-    const { data: solData, error: solError } = await supabase
-      .from("route_solutions")
-      .insert([{
-        case_id: request.case_id,
-        algorithm: request.algorithm,
-        total_cost: solution.total_cost,
-        total_time: solution.total_time,
-        reliability: solution.reliability,
-        exec_time: solution.exec_time,
-        route_sequence: solution.best_path,
-        is_public: false
-      }])
-      .select("solution_id")
-      .single();
+    // 尝试写库（用于历史/分享）；写库失败不影响求解结果返回，避免前端“请求失败”
+    try {
+      const { data: solData, error: solError } = await supabase
+        .from("route_solutions")
+        .insert([{
+          case_id: request.case_id,
+          algorithm: request.algorithm,
+          total_cost: solution.total_cost,
+          total_time: solution.total_time,
+          reliability: solution.reliability,
+          exec_time: solution.exec_time,
+          route_sequence: solution.best_path,
+          is_public: false
+        }])
+        .select("solution_id")
+        .single();
 
-    if (solError) throw solError;
+      if (solError) throw solError;
 
-    const { error: nodesError } = await supabase
-      .from("route_nodes")
-      .insert(solution.nodes.map((node, idx) => ({
-        solution_id: solData.solution_id,
-        city_id: node.city_id,
-        visit_order: idx + 1,
-        arrival_time: node.arrival_time,
-        departure_time: node.departure_time,
-        weather_condition: node.weather_condition
-      })));
+      const { error: nodesError } = await supabase
+        .from("route_nodes")
+        .insert(solution.nodes.map((node, idx) => ({
+          solution_id: solData.solution_id,
+          city_id: node.city_id,
+          visit_order: idx + 1,
+          arrival_time: node.arrival_time,
+          departure_time: node.departure_time,
+          weather_condition: node.weather_condition
+        })));
 
-    if (nodesError) throw nodesError;
+      if (nodesError) throw nodesError;
 
-    // @ts-expect-error: extend response payload for frontend
-    (solution as any).solution_id = solData.solution_id;
+      // @ts-expect-error: extend response payload for frontend
+      (solution as any).solution_id = solData.solution_id;
+    } catch (dbError) {
+      console.error("写库失败(忽略返回结果):", dbError);
+      // @ts-expect-error: extend response payload for frontend
+      (solution as any).solution_id = null;
+    }
 
     return new Response(JSON.stringify({ code: 200, data: solution }), {
       headers: { "Content-Type": "application/json", ...corsHeaders },

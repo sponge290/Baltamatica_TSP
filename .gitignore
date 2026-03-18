@@ -20,3 +20,6 @@ Thumbs.db
 
 # Supabase CLI temp files
 supabase/.temp/
+
+# Cursor workspace files
+.cursor/

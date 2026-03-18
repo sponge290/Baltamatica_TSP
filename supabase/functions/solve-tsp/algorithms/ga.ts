@@ -8,28 +8,28 @@ function calculatePathCost(
   weatherData: any[],
   timeWindows: any[]
 ): number {
-  let cost = 0;
+  let totalCost = 0;
   let currentTime = 0;
   
   for (let i = 0; i < path.length - 1; i++) {
     const u = path[i];
     const v = path[i + 1];
     
-    const { travelTime, c } = calculateWeatherAwareTime(
+    const { travelTime, cost: legCost } = calculateWeatherAwareTime(
       u, v, currentTime, cities, roadSegments, weatherData
     );
     
     const arrivalTime = currentTime + travelTime;
     
     if (!isTimeWindowValid(v, arrivalTime, timeWindows)) {
-      cost += 10000;
+      totalCost += 10000;
     }
     
-    cost += c;
+    totalCost += legCost;
     currentTime = arrivalTime + 30;
   }
   
-  return cost;
+  return totalCost;
 }
 
 function rouletteWheelSelection(fitness: number[]): number {

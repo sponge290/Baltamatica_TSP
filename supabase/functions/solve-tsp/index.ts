@@ -85,34 +85,24 @@ serve(async (req) => {
     // 尝试写库（用于历史/分享）；写库失败不影响求解结果返回，避免前端“请求失败”
     try {
       const { data: solData, error: solError } = await supabase
-        .from("route_solutions")
+        .from("tsp_solutions")
         .insert([{
           case_id: request.case_id,
           algorithm: request.algorithm,
-          total_cost: solution.total_cost,
+          // The current solver uses time-based cost; store it as distance for compatibility with existing schema.
+          total_distance: solution.total_cost,
           total_time: solution.total_time,
-          reliability: solution.reliability,
-          exec_time: solution.exec_time,
-          route_sequence: solution.best_path,
-          is_public: false
+          execution_time: solution.exec_time,
+          route: solution.best_path,
+          weather_impact: {
+            reliability: solution.reliability,
+            process_data: solution.process_data ?? null
+          }
         }])
         .select("solution_id")
         .single();
 
       if (solError) throw solError;
-
-      const { error: nodesError } = await supabase
-        .from("route_nodes")
-        .insert(solution.nodes.map((node, idx) => ({
-          solution_id: solData.solution_id,
-          city_id: node.city_id,
-          visit_order: idx + 1,
-          arrival_time: node.arrival_time,
-          departure_time: node.departure_time,
-          weather_condition: node.weather_condition
-        })));
-
-      if (nodesError) throw nodesError;
 
       // @ts-expect-error: extend response payload for frontend
       (solution as any).solution_id = solData.solution_id;

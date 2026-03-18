@@ -37,7 +37,23 @@ serve(async (req) => {
   }
 
   try {
-    const request: SolveTSPRequest = await req.json();
+    let request: SolveTSPRequest;
+    try {
+      request = await req.json();
+    } catch (parseError) {
+      console.error("解析请求体失败:", parseError);
+      return new Response(JSON.stringify({
+        code: 400,
+        msg: "请求体不是合法的 JSON",
+        phase: "parse_json",
+        error: parseError instanceof Error
+          ? { name: parseError.name, message: parseError.message, stack: parseError.stack }
+          : { message: String(parseError) }
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
     
     const validation = validateRequest(request);
     if (!validation.valid) {
@@ -115,7 +131,10 @@ serve(async (req) => {
     return new Response(JSON.stringify({ 
       code: 500, 
       msg: "执行失败", 
-      error: error instanceof Error ? error.message : "未知错误" 
+      phase: "unhandled",
+      error: error instanceof Error
+        ? { name: error.name, message: error.message, stack: error.stack }
+        : { message: String(error) }
     }), {
       status: 500,
       headers: { "Content-Type": "application/json", ...corsHeaders },

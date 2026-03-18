@@ -18,3 +18,5 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Supabase CLI temp files
+supabase/.temp/

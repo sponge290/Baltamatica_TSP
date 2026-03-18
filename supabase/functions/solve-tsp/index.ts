@@ -50,7 +50,7 @@ serve(async (req) => {
           ? { name: parseError.name, message: parseError.message, stack: parseError.stack }
           : { message: String(parseError) }
       }), {
-        status: 400,
+        status: 200,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
@@ -58,7 +58,7 @@ serve(async (req) => {
     const validation = validateRequest(request);
     if (!validation.valid) {
       return new Response(JSON.stringify({ code: 400, msg: validation.error }), {
-        status: 400,
+        status: 200,
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     }
@@ -136,7 +136,7 @@ serve(async (req) => {
         ? { name: error.name, message: error.message, stack: error.stack }
         : { message: String(error) }
     }), {
-      status: 500,
+      status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   }

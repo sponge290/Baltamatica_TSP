@@ -87,20 +87,14 @@ async function loadSharedSolutionFromUrl() {
     }
 
     const { data: sol, error: solError } = await supabase
-      .from('route_solutions')
-      .select('solution_id, case_id, algorithm, total_cost, total_time, exec_time, reliability, route_sequence, is_public, created_at')
+      .from('tsp_solutions')
+      .select('solution_id, case_id, algorithm, total_cost, total_time, exec_time, reliability, route_sequence, nodes, is_public, created_at')
       .eq('solution_id', solutionId)
       .single();
     if (solError) throw solError;
 
-    const { data: nodes, error: nodesError } = await supabase
-      .from('route_nodes')
-      .select('city_id, visit_order, arrival_time, departure_time, weather_condition')
-      .eq('solution_id', solutionId)
-      .order('visit_order', { ascending: true });
-    if (nodesError) throw nodesError;
-
     const bestPath = Array.isArray(sol.route_sequence) ? sol.route_sequence : (sol.route_sequence || []);
+    const loadedNodes = Array.isArray(sol.nodes) ? sol.nodes : (sol.nodes || []);
     const resultData = {
       algorithm: sol.algorithm,
       total_cost: sol.total_cost,
@@ -108,7 +102,7 @@ async function loadSharedSolutionFromUrl() {
       exec_time: sol.exec_time,
       reliability: sol.reliability,
       best_path: bestPath,
-      nodes: nodes || [],
+      nodes: loadedNodes || [],
       solution_id: sol.solution_id,
       case_id: sol.case_id,
       is_public: sol.is_public
@@ -258,8 +252,8 @@ async function saveResult() {
     return;
   }
 
-  // 纯云端链路：solve-tsp Edge Function 已在云端写入 route_solutions / route_nodes。
-  // 此按钮的含义调整为“设为公开（可被历史记录读取/可分享）”。
+  // 纯云端链路：solve-tsp Edge Function 已在云端写入 tsp_solutions。
+  // 此按钮的含义为“设为公开（可被历史记录读取/可分享）”。
   if (!supabase) {
     alert('未配置 Supabase：请在 .env 中设置 VITE_SUPABASE_URL 与 VITE_SUPABASE_ANON_KEY');
     return;
@@ -275,7 +269,7 @@ async function saveResult() {
   for (const r of calculationResults) {
     try {
       const { error } = await supabase
-        .from('route_solutions')
+        .from('tsp_solutions')
         .update({ is_public: true })
         .eq('solution_id', r.solution_id);
       if (error) throw error;
@@ -462,7 +456,7 @@ async function loadHistoryRecords() {
   }
   try {
     const { data, error } = await supabase
-      .from('route_solutions')
+      .from('tsp_solutions')
       .select('solution_id, case_id, algorithm, total_cost, total_time, exec_time, reliability, is_public, created_at')
       .eq('is_public', true)
       .order('created_at', { ascending: false })

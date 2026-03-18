@@ -89,15 +89,14 @@ serve(async (req) => {
         .insert([{
           case_id: request.case_id,
           algorithm: request.algorithm,
-          // The current solver uses time-based cost; store it as distance for compatibility with existing schema.
-          total_distance: solution.total_cost,
+          total_cost: solution.total_cost,
           total_time: solution.total_time,
-          execution_time: solution.exec_time,
-          route: solution.best_path,
-          weather_impact: {
-            reliability: solution.reliability,
-            process_data: solution.process_data ?? null
-          }
+          reliability: solution.reliability,
+          exec_time: solution.exec_time,
+          route_sequence: solution.best_path,
+          nodes: solution.nodes ?? null,
+          process_data: solution.process_data ?? null,
+          is_public: false,
         }])
         .select("solution_id")
         .single();

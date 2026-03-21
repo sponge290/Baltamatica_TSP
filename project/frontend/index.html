@@ -83,24 +83,47 @@
             <div class="bg-white p-4 rounded-lg shadow hover:shadow-md transition-shadow" data-case-id="1">
               <h3 class="font-semibold text-primary">小规模验证用例</h3>
               <p class="text-sm text-gray-600">5个城市，适用于所有算法验证</p>
+              <div class="mt-3 border rounded bg-white overflow-hidden">
+                <svg class="case-preview w-full h-24" data-preview-case-id="1"></svg>
+              </div>
               <button class="mt-3 text-sm bg-primary text-white px-3 py-1 rounded hover:bg-primary/80">选择</button>
             </div>
             <div class="bg-white p-4 rounded-lg shadow hover:shadow-md transition-shadow" data-case-id="2">
               <h3 class="font-semibold text-primary">中规模标准用例</h3>
               <p class="text-sm text-gray-600">20个城市，适用于A*和遗传算法</p>
+              <div class="mt-3 border rounded bg-white overflow-hidden">
+                <svg class="case-preview w-full h-24" data-preview-case-id="2"></svg>
+              </div>
               <button class="mt-3 text-sm bg-primary text-white px-3 py-1 rounded hover:bg-primary/80">选择</button>
             </div>
             <div class="bg-white p-4 rounded-lg shadow hover:shadow-md transition-shadow" data-case-id="3">
               <h3 class="font-semibold text-primary">大规模业务用例</h3>
               <p class="text-sm text-gray-600">50个城市，推荐使用遗传算法</p>
+              <div class="mt-3 border rounded bg-white overflow-hidden">
+                <svg class="case-preview w-full h-24" data-preview-case-id="3"></svg>
+              </div>
               <button class="mt-3 text-sm bg-primary text-white px-3 py-1 rounded hover:bg-primary/80">选择</button>
             </div>
             <div class="bg-white p-4 rounded-lg shadow hover:shadow-md transition-shadow" data-case-id="4">
               <h3 class="font-semibold text-primary">极限性能用例</h3>
               <p class="text-sm text-gray-600">100个城市，仅推荐使用遗传算法</p>
+              <div class="mt-3 border rounded bg-white overflow-hidden">
+                <svg class="case-preview w-full h-24" data-preview-case-id="4"></svg>
+              </div>
               <button class="mt-3 text-sm bg-primary text-white px-3 py-1 rounded hover:bg-primary/80">选择</button>
             </div>
           </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow p-6 mt-6">
+          <h2 class="text-xl font-semibold mb-4">数据下载</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <a class="text-primary hover:underline" href="/data/test_cases.csv" download>下载测试用例（CSV）</a>
+            <a class="text-primary hover:underline" href="/data/cities.csv" download>下载城市数据（CSV）</a>
+            <a class="text-primary hover:underline" href="/data/road_segments.csv" download>下载路段数据（CSV）</a>
+            <a class="text-primary hover:underline" href="/data/weather_observations.csv" download>下载天气数据（CSV）</a>
+          </div>
+          <p class="text-gray-500 mt-3 text-xs">提示：当前版本使用静态数据文件，适配纯静态部署；后续可扩展为对接实时天气。</p>
         </div>
       </div>
     </section>
@@ -125,19 +148,19 @@
             <div class="space-y-4">
               <div>
                 <label class="flex items-center space-x-2">
-                  <input type="checkbox" class="algorithm-checkbox" value="DP" checked>
+                  <input type="radio" name="algorithm" class="algorithm-radio" value="DP" checked>
                   <span>动态规划 (DP)</span>
                 </label>
               </div>
               <div>
                 <label class="flex items-center space-x-2">
-                  <input type="checkbox" class="algorithm-checkbox" value="A*" checked>
+                  <input type="radio" name="algorithm" class="algorithm-radio" value="A*">
                   <span>A* 算法</span>
                 </label>
               </div>
               <div>
                 <label class="flex items-center space-x-2">
-                  <input type="checkbox" class="algorithm-checkbox" value="GA" checked>
+                  <input type="radio" name="algorithm" class="algorithm-radio" value="GA">
                   <span>遗传算法 (GA)</span>
                 </label>
               </div>
@@ -207,6 +230,22 @@
                 <button class="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300" data-tab="metrics">性能指标</button>
               </div>
             </div>
+            <div id="process-controls" class="hidden mb-3 p-3 bg-gray-50 rounded border">
+              <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div class="flex items-center gap-2">
+                  <button id="process-play" class="px-3 py-1 bg-primary text-white rounded text-sm hover:bg-primary/80">播放</button>
+                  <button id="process-pause" class="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300">暂停</button>
+                  <button id="process-step" class="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300">单步</button>
+                </div>
+                <div class="flex items-center gap-3">
+                  <label class="text-sm text-gray-600 whitespace-nowrap">进度</label>
+                  <input id="process-slider" type="range" min="0" max="0" value="0" class="w-56">
+                  <label class="text-sm text-gray-600 whitespace-nowrap">速度</label>
+                  <input id="process-speed" type="range" min="0.25" max="4" step="0.25" value="1" class="w-40">
+                </div>
+              </div>
+              <div class="mt-2 text-xs text-gray-500" id="process-status">未加载过程数据</div>
+            </div>
             <div class="h-96 border rounded-lg overflow-hidden">
               <div id="path-visualization" class="hidden h-full w-full">
                 <svg id="path-svg" class="w-full h-full"></svg>
@@ -215,7 +254,13 @@
                 <svg id="process-svg" class="w-full h-full"></svg>
               </div>
               <div id="metrics-visualization" class="hidden h-full w-full">
-                <canvas id="metrics-chart"></canvas>
+                <div class="p-4 space-y-3">
+                  <div id="metrics-kpis" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+                  <div class="h-72">
+                    <canvas id="metrics-chart"></canvas>
+                  </div>
+                  <div class="text-xs text-gray-500" id="metrics-note"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -242,6 +287,12 @@
             <option value="3">大规模业务用例 (50城市)</option>
             <option value="4">极限性能用例 (100城市)</option>
           </select>
+        </div>
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+          <div class="text-sm text-gray-600" id="compare-status">优先从历史记录加载对比数据。</div>
+          <button id="compare-run-now" class="px-3 py-2 bg-primary text-white rounded text-sm hover:bg-primary/80">
+            一键运行对比（无历史时使用）
+          </button>
         </div>
         <div class="h-96 border rounded-lg">
           <canvas id="compare-chart"></canvas>

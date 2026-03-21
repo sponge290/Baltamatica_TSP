@@ -22,6 +22,60 @@ CREATE TABLE IF NOT EXISTS tsp_solutions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- If the table existed from an older version, ensure required columns exist.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'tsp_solutions'
+      AND column_name = 'is_public'
+  ) THEN
+    ALTER TABLE tsp_solutions ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT FALSE;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'tsp_solutions'
+      AND column_name = 'route_sequence'
+  ) THEN
+    ALTER TABLE tsp_solutions ADD COLUMN route_sequence JSONB;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'tsp_solutions'
+      AND column_name = 'nodes'
+  ) THEN
+    ALTER TABLE tsp_solutions ADD COLUMN nodes JSONB;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'tsp_solutions'
+      AND column_name = 'process_data'
+  ) THEN
+    ALTER TABLE tsp_solutions ADD COLUMN process_data JSONB;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'tsp_solutions'
+      AND column_name = 'created_at'
+  ) THEN
+    ALTER TABLE tsp_solutions ADD COLUMN created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_tsp_solutions_case_id ON tsp_solutions(case_id);
 CREATE INDEX IF NOT EXISTS idx_tsp_solutions_created_at ON tsp_solutions(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tsp_solutions_is_public ON tsp_solutions(is_public);
@@ -76,7 +130,8 @@ BEGIN
     CREATE POLICY "Anyone can update solutions"
       ON tsp_solutions
       FOR UPDATE
-      USING (true);
+      USING (true)
+      WITH CHECK (true);
   END IF;
 END $$;
 

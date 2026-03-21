@@ -425,7 +425,7 @@ async function startCalculation() {
     if (result.code === 200) {
       calculationResults.push({ algorithm: selectedAlgorithm, ...result.data, path: result.data.best_path, solution_id: result.data.solution_id });
       log(`${selectedAlgorithm} 算法执行成功`);
-      updateVisualization(selectedAlgorithm, result.data, problemData);
+      updateVisualization(selectedAlgorithm, result.data);
     } else {
       log(`${selectedAlgorithm} 算法执行失败: ${result.msg}`);
     }
@@ -605,47 +605,8 @@ async function runTSPAlgorithm(algorithm, problemData, params, caseId) {
           : undefined
       }
     );
-    // #region agent log
-    fetch('http://127.0.0.1:7294/ingest/f0eba27f-2002-416a-a3de-da9ea50eda5a',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'X-Debug-Session-Id':'0a6aff'
-      },
-      body:JSON.stringify({
-        sessionId:'0a6aff',
-        runId:'pre-fix',
-        hypothesisId:'C',
-        location:'src/main.js:357',
-        message:'runTSPAlgorithm response',
-        data:{
-          status: res.status,
-          data: typeof res.data === 'object' ? { code: res.data.code, msg: res.data.msg } : null
-        },
-        timestamp:Date.now()
-      })
-    }).catch(()=>{});
-    // #endregion
     return res.data;
   } catch (e) {
-    // #region agent log
-    fetch('http://127.0.0.1:7294/ingest/f0eba27f-2002-416a-a3de-da9ea50eda5a',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'X-Debug-Session-Id':'0a6aff'
-      },
-      body:JSON.stringify({
-        sessionId:'0a6aff',
-        runId:'pre-fix',
-        hypothesisId:'D',
-        location:'src/main.js:359',
-        message:'runTSPAlgorithm error',
-        data:{ message: e?.message || String(e), name: e?.name },
-        timestamp:Date.now()
-      })
-    }).catch(()=>{});
-    // #endregion
     return { code: 500, msg: '请求失败', error: e.message };
   }
 }

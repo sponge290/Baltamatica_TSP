@@ -83,17 +83,24 @@ function buildHeuristic(cities: any[], roadSegments: any[]) {
 export async function solveAStar(request: SolveTSPRequest): Promise<TSPSolution> {
   const { cities, time_windows, weather_data, road_segments } = request;
   const n = cities.length;
-  
-  if (n > 30) {
-    throw new Error("A*算法推荐使用30个城市以内的中等规模问题");
+  if (n <= 1) {
+    return {
+      best_path: [0, 0],
+      total_cost: 0,
+      total_time: 0,
+      reliability: 1,
+      exec_time: 0,
+      nodes: [],
+      process_data: { search_process: [], meta: { mode: "trivial_single_city" } },
+    };
   }
 
   const fullMask = (1n << BigInt(n)) - 1n;
   const h = buildHeuristic(cities, road_segments);
 
   // To keep runtime bounded for n≈20-30, we use a best-first search with pruning limits.
-  const MAX_EXPANSIONS = n <= 15 ? 200_000 : 300_000;
-  const BEAM_WIDTH = n <= 15 ? 50_000 : 15_000;
+  const MAX_EXPANSIONS = n <= 15 ? 200_000 : (n <= 30 ? 300_000 : 80_000);
+  const BEAM_WIDTH = n <= 15 ? 50_000 : (n <= 30 ? 15_000 : 5_000);
   const TOPK = 80;
 
   const open: AStarState[] = [];
@@ -208,7 +215,8 @@ export async function solveAStar(request: SolveTSPRequest): Promise<TSPSolution>
   }
 
   if (!bestComplete) {
-    throw new Error("A*算法未找到可行解（已达到搜索上限）");
+    const fallback = greedyAStarFallback(request);
+    return fallback;
   }
 
   const bestPath = bestComplete.path;
@@ -224,5 +232,79 @@ export async function solveAStar(request: SolveTSPRequest): Promise<TSPSolution>
     exec_time: 0,
     nodes,
     process_data: { search_process: process, meta: { expansions, beam_width: BEAM_WIDTH, max_expansions: MAX_EXPANSIONS } },
+  };
+}
+
+function greedyAStarFallback(request: SolveTSPRequest): TSPSolution {
+  const { cities, time_windows, weather_data, road_segments } = request;
+  const n = cities.length;
+  const h = buildHeuristic(cities, road_segments);
+  const visited = new Set<number>([0]);
+  const path: number[] = [0];
+  const process: SearchFrame[] = [];
+  let current = 0;
+  let g = 0;
+  let iter = 0;
+
+  while (visited.size < n) {
+    iter++;
+    let bestNext = -1;
+    let bestLeg = Number.POSITIVE_INFINITY;
+    let bestF = Number.POSITIVE_INFINITY;
+
+    for (let next = 0; next < n; next++) {
+      if (visited.has(next) || next === current) continue;
+      const leg = calculateWeatherAwareTime(current, next, g, cities, road_segments, weather_data).cost;
+      const remaining = n - (visited.size + 1);
+      const f = g + leg + h(next, remaining);
+      if (f < bestF) {
+        bestF = f;
+        bestLeg = leg;
+        bestNext = next;
+      }
+    }
+
+    if (bestNext === -1) break;
+
+    g += bestLeg;
+    visited.add(bestNext);
+    current = bestNext;
+    path.push(bestNext);
+
+    process.push({
+      iter,
+      expanded: {
+        city: current,
+        visitedCount: visited.size,
+        g,
+        h: h(current, n - visited.size),
+        f: g + h(current, n - visited.size),
+        path: [...path],
+      },
+      open_top: [],
+      open_size: Math.max(0, n - visited.size),
+      closed_size: visited.size,
+    });
+  }
+
+  const ret = calculateWeatherAwareTime(current, 0, g, cities, road_segments, weather_data).cost;
+  const totalCost = g + ret;
+  path.push(0);
+
+  const { totalTime, reliability, nodes } = calculatePathMetrics(
+    path, cities, time_windows, weather_data, road_segments
+  );
+
+  return {
+    best_path: path,
+    total_cost: totalCost,
+    total_time: totalTime,
+    reliability,
+    exec_time: 0,
+    nodes,
+    process_data: {
+      search_process: process,
+      meta: { mode: "fallback_greedy_astar", reason: "search_limit_or_large_scale", city_count: n },
+    },
   };
 }

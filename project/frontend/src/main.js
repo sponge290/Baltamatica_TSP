@@ -491,6 +491,7 @@ function clearVisualizations() {
   if (kpisEl) kpisEl.innerHTML = '';
   const noteEl = document.getElementById('metrics-note');
   if (noteEl) noteEl.textContent = '';
+  setProcessDetail({ message: '未加载过程数据' }, 0, 0);
 }
 
 async function saveResult() {
@@ -803,6 +804,44 @@ function createProcessPlayer({ frames, onFrame }) {
   return { play, pause: stop, destroy: stop };
 }
 
+function setProcessDetail(frame, idx = 0, total = 0) {
+  const metaEl = document.getElementById('process-frame-meta');
+  const detailEl = document.getElementById('process-frame-detail');
+  if (!metaEl || !detailEl) return;
+
+  if (!frame) {
+    metaEl.textContent = '尚未开始播放';
+    detailEl.textContent = '未加载过程数据';
+    return;
+  }
+
+  if (frame.message) {
+    metaEl.textContent = frame.message;
+    detailEl.textContent = frame.detail || '';
+    return;
+  }
+
+  metaEl.textContent = total > 0 ? `第 ${idx + 1} / ${total} 帧` : '当前帧';
+
+  let payload = frame;
+  if (typeof frame === 'object' && frame !== null) {
+    // Avoid dumping oversized nested arrays in the detail panel.
+    payload = { ...frame };
+    if (Array.isArray(payload.path) && payload.path.length > 30) {
+      payload.path = `${payload.path.slice(0, 30).join(', ')} ... (+${payload.path.length - 30})`;
+    }
+    if (Array.isArray(payload.state) && payload.state.length > 30) {
+      payload.state = `len=${payload.state.length}`;
+    }
+  }
+
+  try {
+    detailEl.textContent = JSON.stringify(payload, null, 2);
+  } catch {
+    detailEl.textContent = String(payload);
+  }
+}
+
 function updatePathVisualization(path, cities) {
   const svg = d3.select('#path-svg');
   svg.selectAll('*').remove();
@@ -928,10 +967,14 @@ function updateGAProcessVisualization(iterationData) {
 
   // Create an animation player over iterations
   const frames = iterationData.map((d, i) => ({ iter: i + 1, best: d[1], mean: d[2] }));
+  if (!frames.length) {
+    setProcessDetail({ message: '暂无 GA 过程数据' }, 0, 0);
+    return;
+  }
   if (__processPlayer?.destroy) __processPlayer.destroy();
   __processPlayer = createProcessPlayer({
     frames,
-    onFrame: (frame) => {
+    onFrame: (frame, i) => {
       // marker
       svg.selectAll('line.marker').remove();
       svg.append('line')
@@ -952,6 +995,7 @@ function updateGAProcessVisualization(iterationData) {
         .attr('fill', '#111827')
         .attr('font-size', 12)
         .text(`迭代 ${frame.iter} | best=${frame.best.toFixed(2)} mean=${frame.mean.toFixed(2)}`);
+      setProcessDetail(frame, i, frames.length);
     }
   });
 }
@@ -972,6 +1016,7 @@ function updateAStarProcessVisualization(searchProcess) {
       .attr('text-anchor', 'middle')
       .attr('font-size', '14px')
       .attr('fill', '#6b7280');
+    setProcessDetail({ message: '暂无 A* 过程数据' }, 0, 0);
     return;
   }
 
@@ -1045,6 +1090,7 @@ function updateAStarProcessVisualization(searchProcess) {
       const exp = frame.expanded;
       const pathLen = exp?.path?.length ?? 0;
       label.text(`iter=${frame.iter} expand=${exp?.city} visited=${exp?.visitedCount}/${pathLen ? pathLen : ''} open=${frame.open_size} closed=${frame.closed_size}`);
+      setProcessDetail(frame, i, frames.length);
     }
   });
 }
@@ -1066,6 +1112,7 @@ function updateDPProcessVisualization(stateProcess) {
       .attr('text-anchor', 'middle')
       .attr('font-size', '14px')
       .attr('fill', '#6b7280');
+    setProcessDetail({ message: '暂无 DP 过程数据' }, 0, 0);
     return;
   }
 
@@ -1093,6 +1140,7 @@ function updateDPProcessVisualization(stateProcess) {
       .attr('text-anchor', 'middle')
       .attr('font-size', '14px')
       .attr('fill', '#6b7280');
+    setProcessDetail({ message: 'DP 过程数据为空' }, 0, 0);
     return;
   }
 
@@ -1147,6 +1195,7 @@ function updateDPProcessVisualization(stateProcess) {
     onFrame: (frame, i) => {
       marker.attr('cx', x(i)).attr('cy', y(frame.best));
       label.text(`k=${frame.k} best=${frame.best.toFixed(2)}`);
+      setProcessDetail(frame, i, frames.length);
     }
   });
 }

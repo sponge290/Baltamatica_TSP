@@ -6,7 +6,7 @@ export async function solveDP(request: SolveTSPRequest): Promise<TSPSolution> {
   const n = cities.length;
   
   if (n > 15) {
-    throw new Error("动态规划仅支持15个城市以内的小规模问题");
+    return solveDPApprox(request);
   }
 
   const INF = 1e18;
@@ -51,6 +51,10 @@ export async function solveDP(request: SolveTSPRequest): Promise<TSPSolution> {
     }
   }
 
+  if (!Number.isFinite(minCost) || minCost >= INF / 2) {
+    return solveDPApprox(request);
+  }
+
   let bestPath: number[] = [];
   let currentMask = fullMask;
   let current = bestIdx;
@@ -75,5 +79,92 @@ export async function solveDP(request: SolveTSPRequest): Promise<TSPSolution> {
     exec_time: 0,
     nodes,
     process_data: { dp_table: dp }
+  };
+}
+
+async function solveDPApprox(request: SolveTSPRequest): Promise<TSPSolution> {
+  const { cities, time_windows, weather_data, road_segments } = request;
+  const n = cities.length;
+  if (n <= 1) {
+    return {
+      best_path: [0, 0],
+      total_cost: 0,
+      total_time: 0,
+      reliability: 1,
+      exec_time: 0,
+      nodes: [],
+      process_data: { dp_table: [[0]], meta: { mode: "approx_greedy", reason: "single_city" } }
+    };
+  }
+
+  const visited = new Set<number>([0]);
+  const path: number[] = [0];
+  let current = 0;
+  let currentTime = 0;
+  let totalCost = 0;
+
+  // Keep a compact numeric table so frontend DP process chart can still animate.
+  // Row index behaves like pseudo-state id; first column stores best-so-far cost.
+  const dpTable: number[][] = [[0]];
+
+  while (visited.size < n) {
+    let bestNext = -1;
+    let bestCost = Number.POSITIVE_INFINITY;
+    let bestTravel = 0;
+
+    for (let v = 0; v < n; v++) {
+      if (visited.has(v) || v === current) continue;
+      const leg = calculateWeatherAwareTime(current, v, currentTime, cities, road_segments, weather_data);
+      if (!isTimeWindowValid(v, currentTime + leg.travelTime, time_windows)) continue;
+      if (leg.cost < bestCost) {
+        bestCost = leg.cost;
+        bestNext = v;
+        bestTravel = leg.travelTime;
+      }
+    }
+
+    if (bestNext === -1) {
+      // If time windows block everything, ignore time-window filter for robustness.
+      for (let v = 0; v < n; v++) {
+        if (visited.has(v) || v === current) continue;
+        const leg = calculateWeatherAwareTime(current, v, currentTime, cities, road_segments, weather_data);
+        if (leg.cost < bestCost) {
+          bestCost = leg.cost;
+          bestNext = v;
+          bestTravel = leg.travelTime;
+        }
+      }
+    }
+
+    if (bestNext === -1) break;
+
+    visited.add(bestNext);
+    path.push(bestNext);
+    totalCost += bestCost;
+    currentTime += bestTravel;
+    current = bestNext;
+    dpTable.push([totalCost]);
+  }
+
+  const back = calculateWeatherAwareTime(current, 0, currentTime, cities, road_segments, weather_data);
+  totalCost += back.cost;
+  path.push(0);
+  dpTable.push([totalCost]);
+
+  const { totalTime, reliability, nodes } = calculatePathMetrics(
+    path, cities, time_windows, weather_data, road_segments
+  );
+
+  return {
+    best_path: path,
+    total_cost: totalCost,
+    total_time: totalTime,
+    reliability,
+    exec_time: 0,
+    nodes,
+    process_data: {
+      dp_table: dpTable,
+      meta: { mode: "approx_greedy", reason: "n_gt_15_or_exact_no_solution", city_count: n }
+    }
   };
 }

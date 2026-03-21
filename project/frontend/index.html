@@ -250,8 +250,17 @@
               <div id="path-visualization" class="hidden h-full w-full">
                 <svg id="path-svg" class="w-full h-full"></svg>
               </div>
-              <div id="process-visualization" class="block h-full w-full">
-                <svg id="process-svg" class="w-full h-full"></svg>
+              <div id="process-visualization" class="block h-full w-full p-3">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 h-full">
+                  <div id="process-detail-panel" class="lg:col-span-1 border rounded bg-gray-50 p-3 overflow-auto">
+                    <div class="text-sm font-medium text-gray-800 mb-2">过程详情</div>
+                    <div id="process-frame-meta" class="text-xs text-gray-500 mb-2">尚未开始播放</div>
+                    <pre id="process-frame-detail" class="text-xs text-gray-700 whitespace-pre-wrap break-words">未加载过程数据</pre>
+                  </div>
+                  <div class="lg:col-span-2 border rounded bg-white">
+                    <svg id="process-svg" class="w-full h-full min-h-[320px]"></svg>
+                  </div>
+                </div>
               </div>
               <div id="metrics-visualization" class="hidden h-full w-full">
                 <div class="p-4 space-y-3">

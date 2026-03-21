@@ -82,7 +82,7 @@ export async function solveDP(request: SolveTSPRequest): Promise<TSPSolution> {
   };
 }
 
-async function solveDPApprox(request: SolveTSPRequest): Promise<TSPSolution> {
+function solveDPApprox(request: SolveTSPRequest): TSPSolution {
   const { cities, time_windows, weather_data, road_segments } = request;
   const n = cities.length;
   if (n <= 1) {

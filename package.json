@@ -5,13 +5,10 @@
   "engines": {
     "node": "20.x"
   },
-  "workspaces": [
-    "project/frontend"
-  ],
   "scripts": {
-    "dev": "npm run dev -w project/frontend",
-    "build": "npm run build -w project/frontend",
-    "preview": "npm run preview -w project/frontend"
+    "dev": "npm --prefix project/frontend run dev",
+    "build": "npm --prefix project/frontend run build",
+    "preview": "npm --prefix project/frontend run preview"
   }
 }
 

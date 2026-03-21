@@ -40,6 +40,36 @@ BEGIN
     FROM information_schema.columns
     WHERE table_schema = 'public'
       AND table_name = 'tsp_solutions'
+      AND column_name = 'total_cost'
+  ) THEN
+    ALTER TABLE tsp_solutions ADD COLUMN total_cost DOUBLE PRECISION;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'tsp_solutions'
+      AND column_name = 'reliability'
+  ) THEN
+    ALTER TABLE tsp_solutions ADD COLUMN reliability DOUBLE PRECISION;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'tsp_solutions'
+      AND column_name = 'exec_time'
+  ) THEN
+    ALTER TABLE tsp_solutions ADD COLUMN exec_time DOUBLE PRECISION;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'tsp_solutions'
       AND column_name = 'route_sequence'
   ) THEN
     ALTER TABLE tsp_solutions ADD COLUMN route_sequence JSONB;
@@ -75,6 +105,19 @@ BEGIN
     ALTER TABLE tsp_solutions ADD COLUMN created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
   END IF;
 END $$;
+
+-- Relax legacy NOT NULL constraints from older schema so new payloads can insert.
+ALTER TABLE tsp_solutions ALTER COLUMN route DROP NOT NULL;
+ALTER TABLE tsp_solutions ALTER COLUMN total_distance DROP NOT NULL;
+ALTER TABLE tsp_solutions ALTER COLUMN execution_time DROP NOT NULL;
+ALTER TABLE tsp_solutions ALTER COLUMN weather_impact DROP NOT NULL;
+
+-- Backfill new columns from legacy schema if present.
+UPDATE tsp_solutions
+SET
+  total_cost = COALESCE(total_cost, total_distance),
+  reliability = COALESCE(reliability, 1),
+  exec_time = COALESCE(exec_time, execution_time);
 
 CREATE INDEX IF NOT EXISTS idx_tsp_solutions_case_id ON tsp_solutions(case_id);
 CREATE INDEX IF NOT EXISTS idx_tsp_solutions_created_at ON tsp_solutions(created_at DESC);

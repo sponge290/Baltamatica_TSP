@@ -5,7 +5,9 @@ export async function solveDP(request: SolveTSPRequest): Promise<TSPSolution> {
   const { cities, time_windows, weather_data, road_segments } = request;
   const n = cities.length;
   
-  if (n > 15) {
+  // Exact DP grows exponentially and may hit edge worker limits at n=20 online.
+  // Keep exact mode for smaller instances; use high-quality approximation afterwards.
+  if (n > 18) {
     return solveDPApprox(request);
   }
 
@@ -97,51 +99,100 @@ function solveDPApprox(request: SolveTSPRequest): TSPSolution {
     };
   }
 
-  const visited = new Set<number>([0]);
-  const path: number[] = [0];
-  let current = 0;
-  let currentTime = 0;
-  let totalCost = 0;
+  const cityOrder = Array.from({ length: n - 1 }, (_, i) => i + 1);
+  const startBudget = n > 80 ? 3 : n > 50 ? 5 : 10;
+  const twoOptRounds = n > 80 ? 1 : n > 50 ? 2 : 5;
+  const startCandidates = cityOrder.slice(0, Math.min(startBudget, cityOrder.length));
+  let bestPath: number[] | null = null;
+  let bestCost = Number.POSITIVE_INFINITY;
+  let bestDpTable: number[][] = [[0]];
 
-  // Keep a compact numeric table so frontend DP process chart can still animate.
-  // Row index behaves like pseudo-state id; first column stores best-so-far cost.
-  const dpTable: number[][] = [[0]];
+  for (const first of startCandidates) {
+    const candidate = buildGreedyRouteFromStart(first, n, cities, road_segments, weather_data, time_windows);
+    const improved = twoOptImprove(candidate.path, cities, road_segments, weather_data, twoOptRounds);
+    const score = evaluatePathCost(improved, cities, road_segments, weather_data);
+    if (score < bestCost) {
+      bestCost = score;
+      bestPath = improved;
+      bestDpTable = candidate.dpTable;
+    }
+  }
+
+  if (!bestPath) {
+    bestPath = [0, 0];
+    bestCost = 0;
+  }
+
+  const { totalTime, reliability, nodes } = calculatePathMetrics(
+    bestPath, cities, time_windows, weather_data, road_segments
+  );
+
+  return {
+    best_path: bestPath,
+    total_cost: bestCost,
+    total_time: totalTime,
+    reliability,
+    exec_time: 0,
+    nodes,
+    process_data: {
+      dp_table: bestDpTable,
+      meta: {
+        mode: "approx_greedy_2opt",
+        reason: "n_gt_18_or_exact_no_solution",
+        city_count: n,
+        start_budget: startBudget,
+        two_opt_rounds: twoOptRounds
+      }
+    }
+  };
+}
+
+function buildGreedyRouteFromStart(
+  first: number,
+  n: number,
+  cities: any[],
+  road_segments: any[],
+  weather_data: any[],
+  time_windows: any[]
+): { path: number[]; dpTable: number[][] } {
+  const visited = new Set<number>([0, first]);
+  const path: number[] = [0, first];
+  let current = first;
+  let currentTime = calculateWeatherAwareTime(0, first, 0, cities, road_segments, weather_data).travelTime;
+  let totalCost = calculateWeatherAwareTime(0, first, 0, cities, road_segments, weather_data).cost;
+  const dpTable: number[][] = [[0], [totalCost]];
 
   while (visited.size < n) {
     let bestNext = -1;
-    let bestCost = Number.POSITIVE_INFINITY;
-    let bestTravel = 0;
-
-    for (let v = 0; v < n; v++) {
+    let legBest = Number.POSITIVE_INFINITY;
+    let legTravel = 0;
+    for (let v = 1; v < n; v++) {
       if (visited.has(v) || v === current) continue;
       const leg = calculateWeatherAwareTime(current, v, currentTime, cities, road_segments, weather_data);
-      if (!isTimeWindowValid(v, currentTime + leg.travelTime, time_windows)) continue;
-      if (leg.cost < bestCost) {
-        bestCost = leg.cost;
+      const arrival = currentTime + leg.travelTime;
+      if (!isTimeWindowValid(v, arrival, time_windows)) continue;
+      if (leg.cost < legBest) {
+        legBest = leg.cost;
+        legTravel = leg.travelTime;
         bestNext = v;
-        bestTravel = leg.travelTime;
       }
     }
-
     if (bestNext === -1) {
-      // If time windows block everything, ignore time-window filter for robustness.
-      for (let v = 0; v < n; v++) {
+      for (let v = 1; v < n; v++) {
         if (visited.has(v) || v === current) continue;
         const leg = calculateWeatherAwareTime(current, v, currentTime, cities, road_segments, weather_data);
-        if (leg.cost < bestCost) {
-          bestCost = leg.cost;
+        if (leg.cost < legBest) {
+          legBest = leg.cost;
+          legTravel = leg.travelTime;
           bestNext = v;
-          bestTravel = leg.travelTime;
         }
       }
     }
-
     if (bestNext === -1) break;
-
     visited.add(bestNext);
     path.push(bestNext);
-    totalCost += bestCost;
-    currentTime += bestTravel;
+    totalCost += legBest;
+    currentTime += legTravel;
     current = bestNext;
     dpTable.push([totalCost]);
   }
@@ -150,21 +201,47 @@ function solveDPApprox(request: SolveTSPRequest): TSPSolution {
   totalCost += back.cost;
   path.push(0);
   dpTable.push([totalCost]);
+  return { path, dpTable };
+}
 
-  const { totalTime, reliability, nodes } = calculatePathMetrics(
-    path, cities, time_windows, weather_data, road_segments
-  );
+function evaluatePathCost(path: number[], cities: any[], road_segments: any[], weather_data: any[]): number {
+  let total = 0;
+  let t = 0;
+  for (let i = 0; i < path.length - 1; i++) {
+    const leg = calculateWeatherAwareTime(path[i], path[i + 1], t, cities, road_segments, weather_data);
+    total += leg.cost;
+    t += leg.travelTime;
+  }
+  return total;
+}
 
-  return {
-    best_path: path,
-    total_cost: totalCost,
-    total_time: totalTime,
-    reliability,
-    exec_time: 0,
-    nodes,
-    process_data: {
-      dp_table: dpTable,
-      meta: { mode: "approx_greedy", reason: "n_gt_15_or_exact_no_solution", city_count: n }
+function twoOptImprove(
+  path: number[],
+  cities: any[],
+  road_segments: any[],
+  weather_data: any[],
+  maxRounds = 5
+): number[] {
+  if (path.length <= 5) return path;
+  let best = [...path];
+  let improved = true;
+  let bestCost = evaluatePathCost(best, cities, road_segments, weather_data);
+  let rounds = 0;
+
+  while (improved && rounds < maxRounds) {
+    improved = false;
+    rounds++;
+    for (let i = 1; i < best.length - 3; i++) {
+      for (let k = i + 1; k < best.length - 2; k++) {
+        const cand = best.slice(0, i).concat(best.slice(i, k + 1).reverse(), best.slice(k + 1));
+        const c = evaluatePathCost(cand, cities, road_segments, weather_data);
+        if (c + 1e-9 < bestCost) {
+          best = cand;
+          bestCost = c;
+          improved = true;
+        }
+      }
     }
-  };
+  }
+  return best;
 }

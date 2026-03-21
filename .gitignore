@@ -23,3 +23,5 @@ supabase/.temp/
 
 # Cursor workspace files
 .cursor/
+
+.vercel

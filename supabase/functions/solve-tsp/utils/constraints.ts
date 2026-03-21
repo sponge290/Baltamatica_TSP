@@ -17,12 +17,12 @@ export function validateRequest(request: SolveTSPRequest): { valid: boolean; err
     return { valid: false, error: "城市数据不能为空" };
   }
   
-  if (request.algorithm === 'DP' && request.cities.length > 15) {
-    return { valid: false, error: "动态规划仅支持15个城市以内的小规模问题" };
+  if (request.algorithm === 'DP' && request.cities.length > 100) {
+    return { valid: false, error: "动态规划仅支持100个城市以内的问题" };
   }
   
-  if (request.algorithm === 'A*' && request.cities.length > 30) {
-    return { valid: false, error: "A*算法推荐使用30个城市以内的中等规模问题" };
+  if (request.algorithm === 'A*' && request.cities.length > 100) {
+    return { valid: false, error: "A*算法仅支持100个城市以内的问题" };
   }
   
   return { valid: true };

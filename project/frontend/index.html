@@ -40,6 +40,7 @@
         <a href="#" class="text-gray-700 hover:text-primary font-medium" id="nav-solve">算法求解</a>
         <a href="#" class="text-gray-700 hover:text-primary font-medium" id="nav-compare">结果对比</a>
         <a href="#" class="text-gray-700 hover:text-primary font-medium" id="nav-history">历史记录</a>
+        <a href="#" class="text-gray-700 hover:text-primary font-medium" id="nav-learning">算法学习</a>
         <a href="#" class="text-gray-700 hover:text-primary font-medium" id="nav-help">帮助文档</a>
   
       </div>
@@ -299,12 +300,24 @@
         </div>
         <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
           <div class="text-sm text-gray-600" id="compare-status">优先从历史记录加载对比数据。</div>
-          <button id="compare-run-now" class="px-3 py-2 bg-primary text-white rounded text-sm hover:bg-primary/80">
-            一键运行对比（无历史时使用）
-          </button>
+          <div class="flex items-center gap-3">
+            <label class="text-sm text-gray-600 whitespace-nowrap">质量阈值(gap≤)</label>
+            <input id="compare-gap-threshold" type="number" min="0" max="100" step="1" value="10" class="w-20 p-1 border rounded text-sm">
+            <span class="text-sm text-gray-500">%</span>
+            <button id="compare-run-now" class="px-3 py-2 bg-primary text-white rounded text-sm hover:bg-primary/80">
+              一键运行对比（无历史时使用）
+            </button>
+          </div>
         </div>
-        <div class="h-96 border rounded-lg">
-          <canvas id="compare-chart"></canvas>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="h-96 border rounded-lg p-2">
+            <div class="text-xs text-gray-500 mb-1">图A：质量阈值达标算法耗时对比</div>
+            <canvas id="compare-chart-qualified"></canvas>
+          </div>
+          <div class="h-96 border rounded-lg p-2">
+            <div class="text-xs text-gray-500 mb-1">图B：全部算法最优性差距（gap）</div>
+            <canvas id="compare-chart-gap"></canvas>
+          </div>
         </div>
       </div>
     </section>
@@ -337,6 +350,87 @@
       </div>
     </section>
 
+    <!-- 算法学习页 -->
+    <section id="learning-section" class="hidden">
+      <div class="bg-white rounded-lg shadow-lg p-6 space-y-4">
+        <div>
+          <h2 class="text-2xl font-semibold text-dark mb-2">算法学习与交流</h2>
+          <p class="text-gray-600 text-sm">本页为可折叠教学版：每个算法包含思想、代码片段、优缺点、复杂度、适用规模和项目入口路径。</p>
+        </div>
+
+        <details class="border rounded-lg p-4" open>
+          <summary class="cursor-pointer text-lg font-semibold text-primary">动态规划（DP）</summary>
+          <div class="mt-3 space-y-3">
+            <p class="text-sm text-gray-700">核心思想：把“访问集合 + 当前城市”当作状态，逐步转移，保证小规模下的最优性；大规模时切换近似策略。</p>
+            <pre class="bg-gray-50 border rounded p-3 text-xs overflow-auto"><code>// 精确 DP：状态转移
+for (let mask = 1; mask &lt; 2 ** n; mask++) {
+  for (let u = 0; u &lt; n; u++) {
+    if ((mask &amp; (1 &lt;&lt; u)) === 0) continue;
+    for (let v = 0; v &lt; n; v++) {
+      if ((mask &amp; (1 &lt;&lt; v)) !== 0) continue;
+      const newMask = mask | (1 &lt;&lt; v);
+      dp[newMask][v] = Math.min(dp[newMask][v], dp[mask][u] + cost(u, v));
+    }
+  }
+}</code></pre>
+            <ul class="text-xs text-gray-600 space-y-1">
+              <li><strong>优点</strong>：小规模下可给出高质量甚至最优解，结果稳定可复现。</li>
+              <li><strong>缺点</strong>：状态空间增长快，规模大时计算与内存压力大。</li>
+              <li><strong>复杂度</strong>：精确 DP 典型约 O(n^2 * 2^n)，近似阶段远低于此。</li>
+              <li><strong>适用规模</strong>：本项目 18 城市以内优先精确，19-100 使用近似 + 局部优化。</li>
+              <li><strong>实现入口</strong>：<code>supabase/functions/solve-tsp/algorithms/dp.ts</code></li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="border rounded-lg p-4">
+          <summary class="cursor-pointer text-lg font-semibold text-secondary">A* 搜索</summary>
+          <div class="mt-3 space-y-3">
+            <p class="text-sm text-gray-700">核心思想：按 <code>f = g + h</code> 优先展开候选，利用启发式函数引导搜索；在线上时设置预算并在后半程兜底返回。</p>
+            <pre class="bg-gray-50 border rounded p-3 text-xs overflow-auto"><code>// A* 主循环（简化）
+while (open.length &gt; 0) {
+  const current = popMinByF(open);  // 取 f 最小状态
+  if (isComplete(current)) return buildTour(current);
+  for (const next of neighbors(current)) {
+    const g2 = current.g + stepCost(current, next);
+    const f2 = g2 + heuristic(next);
+    pushOrRelax(open, next, g2, f2);
+  }
+}</code></pre>
+            <ul class="text-xs text-gray-600 space-y-1">
+              <li><strong>优点</strong>：启发式引导搜索，常能较快得到较优解。</li>
+              <li><strong>缺点</strong>：依赖启发式质量；规模增大时仍可能受预算限制。</li>
+              <li><strong>复杂度</strong>：最坏可接近指数级，实践中受剪枝/预算/beam 控制。</li>
+              <li><strong>适用规模</strong>：本项目支持到 100 城市；50 以内优先 A* 搜索，超出后更依赖兜底阶段。</li>
+              <li><strong>实现入口</strong>：<code>supabase/functions/solve-tsp/algorithms/astar.ts</code></li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="border rounded-lg p-4">
+          <summary class="cursor-pointer text-lg font-semibold text-accent">遗传算法（GA）</summary>
+          <div class="mt-3 space-y-3">
+            <p class="text-sm text-gray-700">核心思想：通过种群进化（选择、交叉、变异）不断改进路径质量，适合更大规模问题。</p>
+            <pre class="bg-gray-50 border rounded p-3 text-xs overflow-auto"><code>// GA 迭代（简化）
+initPopulation();
+for (let gen = 0; gen &lt; maxGenerations; gen++) {
+  const elites = selectElite(population);
+  const offspring = crossoverAndMutate(population);
+  population = [...elites, ...offspring];
+  updateBest(population);
+}</code></pre>
+            <ul class="text-xs text-gray-600 space-y-1">
+              <li><strong>优点</strong>：对超大规模问题鲁棒，可持续改进解质量。</li>
+              <li><strong>缺点</strong>：不保证全局最优，对参数敏感。</li>
+              <li><strong>复杂度</strong>：约 O(种群规模 × 迭代代数 × 单次评估成本)。</li>
+              <li><strong>适用规模</strong>：本项目主要用于 30-100 城市的大规模求解。</li>
+              <li><strong>实现入口</strong>：<code>supabase/functions/solve-tsp/algorithms/ga.ts</code></li>
+            </ul>
+          </div>
+        </details>
+      </div>
+    </section>
+
     <!-- 帮助文档页 -->
     <section id="help-section" class="hidden">
       <div class="bg-white rounded-lg shadow-lg p-6">
@@ -357,8 +451,8 @@
           <div>
             <h3 class="text-lg font-medium mb-2">算法说明</h3>
             <ul class="list-disc list-inside text-gray-600 space-y-2">
-              <li><strong>动态规划(DP)</strong>：适用于15个城市以内的小规模问题，能找到全局最优解</li>
-              <li><strong>A*算法</strong>：适用于10-30个城市的中等规模问题，兼顾速度和最优性</li>
+              <li><strong>动态规划(DP)</strong>：支持100个城市以内；18城市以内优先精确DP，19-100采用高精度近似与局部优化</li>
+              <li><strong>A*算法</strong>：支持100个城市以内；50城市以内优先A*搜索，超过后自动启用兜底策略保证可返回路径</li>
               <li><strong>遗传算法(GA)</strong>：适用于30-100个城市的大规模问题，能找到近似最优解</li>
             </ul>
           </div>

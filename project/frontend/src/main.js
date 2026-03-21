@@ -244,6 +244,7 @@ function setupNavigation() {
     'nav-solve': 'solve-section',
     'nav-compare': 'compare-section',
     'nav-history': 'history-section',
+    'nav-learning': 'learning-section',
     'nav-help': 'help-section'
   };
 
@@ -290,11 +291,28 @@ function setupEventListeners() {
   document.getElementById('share-result-btn').addEventListener('click', shareResult);
   document.getElementById('compare-case-select').addEventListener('change', initCompareChart);
   document.getElementById('compare-run-now').addEventListener('click', runCompareNow);
+  document.getElementById('compare-gap-threshold')?.addEventListener('change', initCompareChart);
 
   document.querySelectorAll('input.algorithm-radio[name="algorithm"]').forEach((el) => {
     el.addEventListener('change', syncGAParamsVisibility);
   });
   syncGAParamsVisibility();
+}
+
+function getDPVariantFromProcessData(processData) {
+  const modeRaw = String(processData?.meta?.mode ?? '').toLowerCase();
+  return modeRaw.includes('approx') ? 'Approx' : 'Exact';
+}
+
+function getAlgorithmDisplayName(resultLike) {
+  const algorithm = resultLike?.algorithm || '';
+  if (algorithm !== 'DP') return algorithm;
+  const variant = getDPVariantFromProcessData(resultLike?.process_data);
+  return `DP(${variant})`;
+}
+
+function getComparisonKey(resultLike) {
+  return getAlgorithmDisplayName(resultLike) || (resultLike?.algorithm ?? 'Unknown');
 }
 
 async function loadSharedSolutionFromUrl() {
@@ -310,7 +328,7 @@ async function loadSharedSolutionFromUrl() {
 
     const { data: sol, error: solError } = await supabase
       .from('tsp_solutions')
-      .select('solution_id, case_id, algorithm, total_cost, total_time, exec_time, reliability, route_sequence, nodes, is_public, created_at')
+      .select('solution_id, case_id, algorithm, total_cost, total_time, exec_time, reliability, route_sequence, nodes, process_data, is_public, created_at')
       .eq('solution_id', solutionId)
       .single();
     if (solError) throw solError;
@@ -325,6 +343,7 @@ async function loadSharedSolutionFromUrl() {
       reliability: sol.reliability,
       best_path: bestPath,
       nodes: loadedNodes || [],
+      process_data: sol.process_data ?? null,
       solution_id: sol.solution_id,
       case_id: sol.case_id,
       is_public: sol.is_public
@@ -433,7 +452,13 @@ async function startCalculation() {
     const result = await runTSPAlgorithm(selectedAlgorithm, problemData, params, testCaseId);
 
     if (result.code === 200) {
-      calculationResults.push({ algorithm: selectedAlgorithm, ...result.data, path: result.data.best_path, solution_id: result.data.solution_id });
+      calculationResults.push({
+        algorithm: selectedAlgorithm,
+        ...result.data,
+        case_id: result.data?.case_id ?? Number(testCaseId),
+        path: result.data.best_path,
+        solution_id: result.data.solution_id
+      });
       log(`${selectedAlgorithm} 算法执行成功`);
       updateVisualization(selectedAlgorithm, result.data);
     } else {
@@ -507,15 +532,39 @@ async function saveResult() {
     return;
   }
 
-  const missing = calculationResults.filter(r => !r.solution_id);
-  if (missing.length > 0) {
-    alert('当前结果缺少 solution_id（请先重新计算，或确认 Edge Function 已返回 solution_id）');
-    return;
-  }
-
   let allOk = true;
   for (const r of calculationResults) {
     try {
+      if (!r.solution_id) {
+        const fallbackCaseId = Number(r.case_id ?? __lastProblemData?.case_id ?? 0);
+        if (!fallbackCaseId) {
+          throw new Error('缺少 case_id，无法补写 solution 记录');
+        }
+        const payload = {
+          case_id: fallbackCaseId,
+          algorithm: r.algorithm,
+          total_cost: Number(r.total_cost ?? 0),
+          total_time: Number(r.total_time ?? 0),
+          reliability: r.reliability == null ? null : Number(r.reliability),
+          exec_time: Number(r.exec_time ?? 0),
+          route_sequence: Array.isArray(r.best_path) ? r.best_path : (Array.isArray(r.path) ? r.path : []),
+          nodes: r.nodes ?? null,
+          process_data: r.process_data ?? null,
+          is_public: true
+        };
+        const { data: inserted, error: insertErr } = await supabase
+          .from('tsp_solutions')
+          .insert([payload])
+          .select('solution_id')
+          .single();
+        if (insertErr) throw insertErr;
+        r.solution_id = inserted?.solution_id ?? null;
+      }
+
+      if (!r.solution_id) {
+        throw new Error('补写 solution_id 失败');
+      }
+
       const { error } = await supabase
         .from('tsp_solutions')
         .update({ is_public: true })
@@ -557,9 +606,10 @@ function showResultModal() {
   let resultHtml = '<div class="space-y-4">';
   
   calculationResults.forEach(result => {
+    const algorithmLabel = getAlgorithmDisplayName(result);
     resultHtml += `
       <div class="border rounded-lg p-4">
-        <h4 class="font-semibold text-primary">${result.algorithm} 算法</h4>
+        <h4 class="font-semibold text-primary">${algorithmLabel} 算法</h4>
         <div class="grid grid-cols-2 gap-2 mt-2">
           <div><span class="text-gray-600">总成本:</span> ${result.total_cost.toFixed(2)}</div>
           <div><span class="text-gray-600">总时间:</span> ${result.total_time.toFixed(2)} 分钟</div>
@@ -607,7 +657,8 @@ async function runTSPAlgorithm(algorithm, problemData, params, caseId) {
         params
       },
       {
-        timeout: 120000,
+        // Do not force client-side timeout for heavy exact/near-exact runs.
+        timeout: 0,
         headers: SUPABASE_ANON_KEY
           ? {
               apikey: SUPABASE_ANON_KEY,
@@ -630,7 +681,7 @@ async function loadHistoryRecords() {
   try {
     const { data, error } = await supabase
       .from('tsp_solutions')
-      .select('solution_id, case_id, algorithm, total_cost, total_time, exec_time, reliability, is_public, created_at')
+      .select('solution_id, case_id, algorithm, total_cost, total_time, exec_time, reliability, process_data, is_public, created_at')
       .eq('is_public', true)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -645,7 +696,7 @@ async function loadHistoryRecords() {
     tableBody.innerHTML = data.map(record => `
       <tr>
         <td class="px-6 py-4">${record.case_id}</td>
-        <td class="px-6 py-4">${record.algorithm}</td>
+        <td class="px-6 py-4">${escapeHtml(getAlgorithmDisplayName(record))}</td>
         <td class="px-6 py-4">${record.total_cost.toFixed(2)}</td>
         <td class="px-6 py-4">${record.total_time.toFixed(2)}</td>
         <td class="px-6 py-4">${record.exec_time.toFixed(2)} ms</td>
@@ -1227,6 +1278,7 @@ async function initMetricsChart() {
   }
 
   const algorithm = latest.algorithm;
+  const algorithmLabel = getAlgorithmDisplayName(latest);
   const totalCost = Number(latest.total_cost);
   const totalTime = Number(latest.total_time);
   const execTime = Number(latest.exec_time);
@@ -1247,7 +1299,7 @@ async function initMetricsChart() {
     effortValue = Array.isArray(pd.dp_table) ? pd.dp_table.length : null;
   }
 
-  // Baseline best (from public history) for the same case_id + algorithm, if available
+  // Baseline best (from public history) for the same case_id, across algorithms.
   let bestPublic = null;
   let bestNote = '';
   const caseId = __lastProblemData?.case_id ?? null;
@@ -1255,9 +1307,8 @@ async function initMetricsChart() {
     try {
       const { data, error } = await supabase
         .from('tsp_solutions')
-        .select('total_cost, algorithm')
+        .select('total_cost')
         .eq('case_id', caseId)
-        .eq('algorithm', algorithm)
         .eq('is_public', true)
         .order('total_cost', { ascending: true })
         .limit(1);
@@ -1282,11 +1333,11 @@ async function initMetricsChart() {
       kpiCard('执行耗时(ms)', `${execTime.toFixed(2)}`),
       kpiCard('可靠性', reliability == null ? 'N/A' : reliability.toFixed(2)),
       kpiCard(effortLabel, effortValue == null ? 'N/A' : String(effortValue)),
-      kpiCard('相对差距', gapPct == null ? 'N/A' : `${gapPct.toFixed(2)}%`)
+      kpiCard('最优性差距(gap)', gapPct == null ? 'N/A' : `${gapPct.toFixed(2)}%`)
     ].join('');
   }
   if (noteEl) {
-    noteEl.textContent = '说明：成本/时间用于衡量解质量；耗时与过程规模衡量求解效率；可靠性来自天气因子。相对差距以公开历史最佳为基线（若存在）。';
+    noteEl.textContent = `${algorithmLabel}：gap 以当前用例公开历史全局最优成本为基线（若存在），用于衡量最优性差距。`;
   }
 
   // Radar chart: normalized (higher is better)
@@ -1344,12 +1395,11 @@ function clamp(x, a, b) {
 }
 
 function initCompareChart() {
-  const ctx = document.getElementById('compare-chart').getContext('2d');
+  const qualifiedCtx = document.getElementById('compare-chart-qualified').getContext('2d');
   const caseId = document.getElementById('compare-case-select').value;
   
-  if (window.compareChart) {
-    window.compareChart.destroy();
-  }
+  if (window.compareChartQualified) window.compareChartQualified.destroy();
+  if (window.compareChartGap) window.compareChartGap.destroy();
 
   const statusEl = document.getElementById('compare-status');
   if (statusEl) statusEl.textContent = '正在从历史记录加载对比数据...';
@@ -1358,16 +1408,16 @@ function initCompareChart() {
     .then(rows => {
       if (!rows || rows.length === 0) {
         if (statusEl) statusEl.textContent = '没有可用的公开历史结果。可以点击“一键运行对比”。';
-        renderCompareChart(ctx, [], caseId);
+        renderCompareChart(qualifiedCtx, [], caseId);
         return;
       }
       if (statusEl) statusEl.textContent = `已加载历史对比数据（case=${caseId}）`;
-      renderCompareChart(ctx, rows, caseId);
+      renderCompareChart(qualifiedCtx, rows, caseId);
     })
     .catch((e) => {
       console.error('加载对比数据失败:', e);
       if (statusEl) statusEl.textContent = `加载历史失败：${e?.message || String(e)}；可以点击“一键运行对比”。`;
-      renderCompareChart(ctx, [], caseId);
+      renderCompareChart(qualifiedCtx, [], caseId);
     });
 }
 
@@ -1375,77 +1425,162 @@ async function loadCompareFromHistory(caseId) {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from('tsp_solutions')
-    .select('algorithm, total_cost, total_time, exec_time, reliability, created_at')
+    .select('algorithm, total_cost, total_time, exec_time, reliability, process_data, created_at')
     .eq('case_id', parseInt(caseId))
     .eq('is_public', true)
     .order('created_at', { ascending: false })
     .limit(200);
   if (error) throw error;
 
-  // pick best (min cost) per algorithm
+  // pick best (min cost) per algorithm variant (e.g. DP(Exact)/DP(Approx))
   const byAlg = new Map();
   for (const r of (data || [])) {
-    const alg = r.algorithm;
+    const alg = getComparisonKey(r);
     const cur = byAlg.get(alg);
     if (!cur || Number(r.total_cost) < Number(cur.total_cost)) byAlg.set(alg, r);
   }
-  return Array.from(byAlg.values());
+  return Array.from(byAlg.entries()).map(([algKey, row]) => ({
+    ...row,
+    __alg_key: algKey
+  }));
 }
 
 function renderCompareChart(ctx, rows, caseId) {
-  const algorithms = rows.map(r => r.algorithm);
-  const costArr = rows.map(r => Number(r.total_cost));
-  const timeArr = rows.map(r => Number(r.total_time));
-  const execArr = rows.map(r => Number(r.exec_time));
-  const relArr = rows.map(r => r.reliability == null ? 0.5 : Number(r.reliability));
+  const statusEl = document.getElementById('compare-status');
+  const thresholdInput = document.getElementById('compare-gap-threshold');
+  const gapCtx = document.getElementById('compare-chart-gap').getContext('2d');
+  const thresholdPct = Math.max(0, Number(thresholdInput?.value ?? 10));
 
-  const costScore = normalizeLowerBetter(costArr);
-  const timeScore = normalizeLowerBetter(timeArr);
-  const execScore = normalizeLowerBetter(execArr);
-  const relScore = normalizeHigherBetter(relArr);
+  if (window.compareChartQualified) {
+    window.compareChartQualified.destroy();
+    window.compareChartQualified = null;
+  }
+  if (window.compareChartGap) {
+    window.compareChartGap.destroy();
+    window.compareChartGap = null;
+  }
+  if (typeof Chart?.getChart === 'function') {
+    Chart.getChart('compare-chart')?.destroy();
+    Chart.getChart('compare-chart-qualified')?.destroy();
+    Chart.getChart('compare-chart-gap')?.destroy();
+  }
 
-  const colors = {
-    'DP': ['rgba(59,130,246,1)', 'rgba(59,130,246,0.2)'],
-    'A*': ['rgba(16,185,129,1)', 'rgba(16,185,129,0.2)'],
-    'GA': ['rgba(139,92,246,1)', 'rgba(139,92,246,0.2)'],
-  };
+  if (!rows || rows.length === 0) {
+    window.compareChartQualified = new Chart(ctx, {
+      type: 'bar',
+      data: { labels: [], datasets: [{ label: '无数据', data: [] }] },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+    window.compareChartGap = new Chart(gapCtx, {
+      type: 'bar',
+      data: { labels: [], datasets: [{ label: '无数据', data: [] }] },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+    return;
+  }
 
-  window.compareChart = new Chart(ctx, {
-    type: 'radar',
+  const baselineCost = Math.min(...rows.map(r => Number(r.total_cost)).filter(Number.isFinite));
+  const enriched = rows.map((r) => {
+    const cost = Number(r.total_cost);
+    const gap = baselineCost > 0 ? ((cost / baselineCost) - 1) * 100 : null;
+    return {
+      ...r,
+      __gap_pct: gap,
+      __alg_key: r.__alg_key || getComparisonKey(r)
+    };
+  });
+
+  const eligible = enriched
+    .filter(r => r.__gap_pct != null && r.__gap_pct <= thresholdPct)
+    .sort((a, b) => Number(a.exec_time) - Number(b.exec_time));
+
+  if (statusEl) {
+    const minCostText = Number.isFinite(baselineCost) ? baselineCost.toFixed(2) : 'N/A';
+    statusEl.textContent = `同规模(case=${caseId})对比：先按 gap≤${thresholdPct}% 过滤，再比较执行耗时。基准成本=${minCostText}。达标 ${eligible.length}/${enriched.length}。`;
+  }
+
+  window.compareChartQualified = new Chart(ctx, {
+    type: 'bar',
     data: {
-      labels: ['解质量(成本)', '总时间', '速度(耗时)', '可靠性'],
-      datasets: rows.map((r, i) => {
-        const alg = r.algorithm;
-        const [border, bg] = colors[alg] || ['rgba(107,114,128,1)', 'rgba(107,114,128,0.2)'];
-        return {
-          label: alg,
-          data: [costScore[i], timeScore[i], execScore[i], relScore[i]],
-          borderColor: border,
-          backgroundColor: bg,
-        };
-      })
+      labels: eligible.map(r => r.__alg_key),
+      datasets: [
+        {
+          label: '执行耗时(ms)（仅展示质量阈值达标算法）',
+          data: eligible.map(r => Number(r.exec_time)),
+          backgroundColor: 'rgba(59,130,246,0.45)',
+          borderColor: 'rgba(59,130,246,1)',
+          borderWidth: 1
+        }
+      ]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      scales: {
-        r: { min: 0, max: 1, ticks: { stepSize: 0.25 } }
-      },
       plugins: {
         tooltip: {
           callbacks: {
             afterBody: (items) => {
-              const idx = items?.[0]?.datasetIndex ?? 0;
-              const row = rows[idx];
+              const idx = items?.[0]?.dataIndex ?? 0;
+              const row = eligible[idx];
               if (!row) return '';
               return [
+                `gap=${row.__gap_pct == null ? 'N/A' : `${row.__gap_pct.toFixed(2)}%`}`,
                 `cost=${Number(row.total_cost).toFixed(2)}`,
                 `time=${Number(row.total_time).toFixed(2)}min`,
-                `exec=${Number(row.exec_time).toFixed(2)}ms`,
                 `rel=${row.reliability == null ? 'N/A' : Number(row.reliability).toFixed(2)}`
               ].join('\n');
             }
           }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: 'ms' }
+        }
+      }
+    }
+  });
+
+  const sortedByGap = [...enriched].sort((a, b) => Number(a.__gap_pct) - Number(b.__gap_pct));
+  window.compareChartGap = new Chart(gapCtx, {
+    type: 'bar',
+    data: {
+      labels: sortedByGap.map(r => r.__alg_key),
+      datasets: [
+        {
+          label: '最优性差距 gap(%)（全部算法）',
+          data: sortedByGap.map(r => Number(r.__gap_pct)),
+          backgroundColor: sortedByGap.map(r => (r.__gap_pct <= thresholdPct ? 'rgba(16,185,129,0.45)' : 'rgba(239,68,68,0.45)')),
+          borderColor: sortedByGap.map(r => (r.__gap_pct <= thresholdPct ? 'rgba(16,185,129,1)' : 'rgba(239,68,68,1)')),
+          borderWidth: 1
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        tooltip: {
+          callbacks: {
+            afterBody: (items) => {
+              const idx = items?.[0]?.dataIndex ?? 0;
+              const row = sortedByGap[idx];
+              if (!row) return '';
+              return [
+                `exec=${Number(row.exec_time).toFixed(2)}ms`,
+                `cost=${Number(row.total_cost).toFixed(2)}`,
+                `time=${Number(row.total_time).toFixed(2)}min`,
+                `rel=${row.reliability == null ? 'N/A' : Number(row.reliability).toFixed(2)}`
+              ].join('\n');
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: '%' }
         }
       }
     }
@@ -1477,8 +1612,8 @@ async function runCompareNow() {
     const problemData = await getProblemData(caseId);
     const n = problemData.cities?.length || 0;
     const candidates = [];
-    if (n <= 15) candidates.push('DP');
-    if (n <= 30) candidates.push('A*');
+    if (n <= 100) candidates.push('DP');
+    if (n <= 100) candidates.push('A*');
     candidates.push('GA');
 
     const gaParams = {
@@ -1497,10 +1632,10 @@ async function runCompareNow() {
         console.warn(`${alg} 失败:`, res);
         continue;
       }
-      rows.push({ algorithm: alg, ...res.data });
+      rows.push({ algorithm: alg, ...res.data, __alg_key: getComparisonKey({ algorithm: alg, ...res.data }) });
     }
 
-    const ctx = document.getElementById('compare-chart').getContext('2d');
+    const ctx = document.getElementById('compare-chart-qualified').getContext('2d');
     if (statusEl) statusEl.textContent = rows.length ? '对比完成（基于当次运行结果）' : '对比失败：没有算法成功返回结果';
     renderCompareChart(ctx, rows, caseId);
   } catch (e) {

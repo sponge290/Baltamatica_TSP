@@ -11,6 +11,7 @@ let currentSection = 'home-section';
 let calculationResults = [];
 
 let __staticDataCache = null;
+let __staticDataPromise = null;
 let __lastProblemData = null;
 
 let __processPlayer = null;
@@ -82,59 +83,68 @@ async function fetchTextOrNull(url) {
 
 async function loadStaticData() {
   if (__staticDataCache) return __staticDataCache;
+  if (__staticDataPromise) return __staticDataPromise;
 
-  const [citiesCsv, roadsCsv, casesCsv, weatherCsv] = await Promise.all([
-    fetchTextOrNull('/data/cities.csv'),
-    fetchTextOrNull('/data/road_segments.csv'),
-    fetchTextOrNull('/data/test_cases.csv'),
-    fetchTextOrNull('/data/weather_observations.csv')
-  ]);
+  __staticDataPromise = (async () => {
+    const [citiesCsv, roadsCsv, casesCsv, weatherCsv] = await Promise.all([
+      fetchTextOrNull('/data/cities.csv'),
+      fetchTextOrNull('/data/road_segments.csv'),
+      fetchTextOrNull('/data/test_cases.csv'),
+      fetchTextOrNull('/data/weather_observations.csv')
+    ]);
 
-  if (!citiesCsv || !roadsCsv || !casesCsv) {
-    throw new Error('缺少静态数据文件：请确认 /public/data 下存在 cities.csv / road_segments.csv / test_cases.csv');
+    if (!citiesCsv || !roadsCsv || !casesCsv) {
+      throw new Error('缺少静态数据文件：请确认 /public/data 下存在 cities.csv / road_segments.csv / test_cases.csv');
+    }
+
+    const cities = parseCsv(citiesCsv).map(r => ({
+      city_id: Number(r.city_id),
+      city_name: r.city_name,
+      latitude: Number(r.latitude),
+      longitude: Number(r.longitude),
+      min_visits: Number(r.min_visits || 1)
+    }));
+
+    const road_segments = parseCsv(roadsCsv).map(r => ({
+      segment_id: Number(r.segment_id),
+      start_city_id: Number(r.start_city_id),
+      end_city_id: Number(r.end_city_id),
+      distance: Number(r.distance),
+      road_type: r.road_type,
+      speed_limit: Number(r.speed_limit)
+    }));
+
+    const test_cases = parseCsv(casesCsv).map(r => ({
+      case_id: String(r.case_id),
+      case_name: r.case_name,
+      case_scale: r.case_scale,
+      city_ids: safeJsonParse(r.city_ids, []),
+      description: r.description,
+      is_default: String(r.is_default).toLowerCase() === 'true'
+    }));
+
+    const weather_data = weatherCsv
+      ? parseCsv(weatherCsv).map(r => ({
+          observation_id: Number(r.observation_id),
+          city_id: Number(r.city_id),
+          observation_time: r.observation_time,
+          temperature: Number(r.temperature),
+          precipitation: Number(r.precipitation),
+          wind_speed: Number(r.wind_speed),
+          visibility: Number(r.visibility),
+          weather_condition: r.weather_condition
+        }))
+      : [];
+
+    __staticDataCache = { cities, road_segments, test_cases, weather_data };
+    return __staticDataCache;
+  })();
+
+  try {
+    return await __staticDataPromise;
+  } finally {
+    __staticDataPromise = null;
   }
-
-  const cities = parseCsv(citiesCsv).map(r => ({
-    city_id: Number(r.city_id),
-    city_name: r.city_name,
-    latitude: Number(r.latitude),
-    longitude: Number(r.longitude),
-    min_visits: Number(r.min_visits || 1)
-  }));
-
-  const road_segments = parseCsv(roadsCsv).map(r => ({
-    segment_id: Number(r.segment_id),
-    start_city_id: Number(r.start_city_id),
-    end_city_id: Number(r.end_city_id),
-    distance: Number(r.distance),
-    road_type: r.road_type,
-    speed_limit: Number(r.speed_limit)
-  }));
-
-  const test_cases = parseCsv(casesCsv).map(r => ({
-    case_id: String(r.case_id),
-    case_name: r.case_name,
-    case_scale: r.case_scale,
-    city_ids: safeJsonParse(r.city_ids, []),
-    description: r.description,
-    is_default: String(r.is_default).toLowerCase() === 'true'
-  }));
-
-  const weather_data = weatherCsv
-    ? parseCsv(weatherCsv).map(r => ({
-        observation_id: Number(r.observation_id),
-        city_id: Number(r.city_id),
-        observation_time: r.observation_time,
-        temperature: Number(r.temperature),
-        precipitation: Number(r.precipitation),
-        wind_speed: Number(r.wind_speed),
-        visibility: Number(r.visibility),
-        weather_condition: r.weather_condition
-      }))
-    : [];
-
-  __staticDataCache = { cities, road_segments, test_cases, weather_data };
-  return __staticDataCache;
 }
 
 function safeJsonParse(text, fallback) {
@@ -1074,6 +1084,17 @@ function updateDPProcessVisualization(stateProcess) {
   const frames = Array.from(bestByK.entries())
     .sort((a, b) => a[0] - b[0])
     .map(([k, best], i) => ({ k, best, i }));
+
+  if (!frames.length) {
+    svg.append('text')
+      .attr('x', width / 2)
+      .attr('y', height / 2)
+      .text('DP 过程数据为空')
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '14px')
+      .attr('fill', '#6b7280');
+    return;
+  }
 
   const padL = 56, padR = 16, padT = 36, padB = 40;
   const x = d3.scaleLinear().domain([0, frames.length - 1]).range([padL, width - padR]);

@@ -9,4 +9,3 @@ segment_id,start_city_id,end_city_id,distance,road_type,speed_limit
 8,3,5,1600,高速,120
 9,4,1,2150,高速,120
 10,5,2,1650,高速,120
-

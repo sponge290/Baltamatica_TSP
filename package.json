@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "npm --prefix project/frontend run dev",
     "build": "npm --prefix project/frontend run build",
-    "preview": "npm --prefix project/frontend run preview"
+    "preview": "npm --prefix project/frontend run preview",
+    "sync:data": "node project/scripts/sync_static_data.mjs"
   }
 }
 

@@ -16,7 +16,9 @@ export interface TimeWindow {
 
 export interface WeatherObservation {
   observation_id: number;
-  station_id: number;
+  // Frontend static data uses city_id, keep station_id as optional compatibility field.
+  city_id?: number;
+  station_id?: number;
   observation_time: string;
   temperature: number;
   precipitation: number;

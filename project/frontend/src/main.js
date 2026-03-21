@@ -161,8 +161,9 @@ async function loadCase(caseId) {
   const citySet = new Set((tc?.city_ids || []).map(Number));
 
   const cities = data.cities.filter(c => citySet.has(Number(c.city_id)));
-  const road_segments = data.road_segments.filter(s => citySet.has(s.start_city_id) && citySet.has(s.end_city_id));
-  const weather_data = data.weather_data.filter(w => citySet.has(w.city_id));
+  const baseRoads = data.road_segments.filter(s => citySet.has(s.start_city_id) && citySet.has(s.end_city_id));
+  const weather_data = buildCaseWeatherData(cities, data.weather_data.filter(w => citySet.has(w.city_id)));
+  const road_segments = buildCaseRoadSegments(cities, baseRoads);
 
   return {
     case_id: Number(tc?.case_id ?? caseId),
@@ -172,6 +173,111 @@ async function loadCase(caseId) {
     weather_data,
     road_segments
   };
+}
+
+function haversineKm(a, b) {
+  const toRad = (x) => x * Math.PI / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLon = toRad(b.longitude - a.longitude);
+  const aa = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLon / 2) ** 2;
+  return 6371 * (2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa)));
+}
+
+function buildCaseRoadSegments(cities, baseRoads) {
+  const roads = Array.isArray(baseRoads) ? [...baseRoads] : [];
+  const byPair = new Set(roads.map(s => `${s.start_city_id}|${s.end_city_id}`));
+
+  // Phase-2 optimization: densify sparse road data with reverse edges and KNN estimated links.
+  for (const seg of [...roads]) {
+    const revKey = `${seg.end_city_id}|${seg.start_city_id}`;
+    if (!byPair.has(revKey)) {
+      byPair.add(revKey);
+      roads.push({
+        segment_id: -1000000 - roads.length,
+        start_city_id: seg.end_city_id,
+        end_city_id: seg.start_city_id,
+        distance: seg.distance,
+        road_type: seg.road_type || 'estimated_reverse',
+        speed_limit: seg.speed_limit || 100
+      });
+    }
+  }
+
+  const cityById = new Map(cities.map(c => [c.city_id, c]));
+  const k = cities.length <= 20 ? 3 : cities.length <= 50 ? 4 : 5;
+  for (const from of cities) {
+    const nearest = cities
+      .filter(to => to.city_id !== from.city_id)
+      .map(to => ({ to, d: haversineKm(from, to) }))
+      .sort((x, y) => x.d - y.d)
+      .slice(0, k);
+
+    for (const item of nearest) {
+      const to = item.to;
+      const key = `${from.city_id}|${to.city_id}`;
+      if (byPair.has(key)) continue;
+      byPair.add(key);
+      roads.push({
+        segment_id: -2000000 - roads.length,
+        start_city_id: from.city_id,
+        end_city_id: to.city_id,
+        distance: item.d,
+        road_type: 'estimated_knn',
+        speed_limit: 95
+      });
+    }
+  }
+
+  // Keep only valid references after enrichment.
+  return roads.filter(s => cityById.has(s.start_city_id) && cityById.has(s.end_city_id));
+}
+
+function buildCaseWeatherData(cities, baseWeather) {
+  const weather = Array.isArray(baseWeather) ? [...baseWeather] : [];
+  const byCity = new Map(weather.map(w => [Number(w.city_id), w]));
+  const known = weather.filter(w => Number.isFinite(Number(w.city_id)));
+
+  if (!known.length) {
+    // No weather available: produce neutral defaults so all cities have explicit observations.
+    return cities.map((c, idx) => ({
+      observation_id: 900000 + idx,
+      city_id: c.city_id,
+      observation_time: '2026-03-18T08:00:00Z',
+      temperature: 15,
+      precipitation: 0,
+      wind_speed: 2,
+      visibility: 12,
+      weather_condition: 'sunny'
+    }));
+  }
+
+  for (const c of cities) {
+    if (byCity.has(c.city_id)) continue;
+    let best = known[0];
+    let bestD = Number.POSITIVE_INFINITY;
+    for (const w of known) {
+      const wc = cities.find(x => x.city_id === Number(w.city_id));
+      if (!wc) continue;
+      const d = haversineKm(c, wc);
+      if (d < bestD) {
+        bestD = d;
+        best = w;
+      }
+    }
+    byCity.set(c.city_id, {
+      observation_id: 800000 + c.city_id,
+      city_id: c.city_id,
+      observation_time: best.observation_time || '2026-03-18T08:00:00Z',
+      temperature: Number(best.temperature ?? 15),
+      precipitation: Number(best.precipitation ?? 0),
+      wind_speed: Number(best.wind_speed ?? 2),
+      visibility: Number(best.visibility ?? 12),
+      weather_condition: best.weather_condition || 'sunny'
+    });
+  }
+
+  return cities.map(c => byCity.get(c.city_id));
 }
 
 function renderHomeCasePreviews() {

@@ -1,5 +1,76 @@
 import type { City, WeatherObservation, RoadSegment, RouteNode } from "./types.ts";
 
+const roadIndexCache = new WeakMap<RoadSegment[], Map<string, RoadSegment>>();
+const weatherIndexCache = new WeakMap<WeatherObservation[], Map<number, WeatherObservation>>();
+
+function roadKey(a: number, b: number): string {
+  return `${a}|${b}`;
+}
+
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (x: number) => x * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const aa = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 6371 * (2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa)));
+}
+
+function getRoadIndex(roadSegments: RoadSegment[]): Map<string, RoadSegment> {
+  const cached = roadIndexCache.get(roadSegments);
+  if (cached) return cached;
+
+  const idx = new Map<string, RoadSegment>();
+  for (const seg of roadSegments || []) {
+    idx.set(roadKey(seg.start_city_id, seg.end_city_id), seg);
+  }
+  roadIndexCache.set(roadSegments, idx);
+  return idx;
+}
+
+function getWeatherIndex(weatherData: WeatherObservation[]): Map<number, WeatherObservation> {
+  const cached = weatherIndexCache.get(weatherData);
+  if (cached) return cached;
+
+  const idx = new Map<number, WeatherObservation>();
+  for (const obs of weatherData || []) {
+    const cityId = Number(obs.city_id ?? obs.station_id);
+    if (!Number.isFinite(cityId)) continue;
+    const prev = idx.get(cityId);
+    if (!prev) {
+      idx.set(cityId, obs);
+      continue;
+    }
+    const prevTs = Date.parse(prev.observation_time || "");
+    const curTs = Date.parse(obs.observation_time || "");
+    if (Number.isFinite(curTs) && (!Number.isFinite(prevTs) || curTs >= prevTs)) {
+      idx.set(cityId, obs);
+    }
+  }
+  weatherIndexCache.set(weatherData, idx);
+  return idx;
+}
+
+function weatherConditionFactor(condition: string | undefined): number {
+  const c = String(condition || "").toLowerCase();
+  if (c === "snow") return 0.7;
+  if (c === "rain") return 0.85;
+  if (c === "fog") return 0.9;
+  return 1.0;
+}
+
+function observationFactor(obs?: WeatherObservation): number {
+  if (!obs) return 1.0;
+  const byCondition = weatherConditionFactor(obs.weather_condition);
+  // Soft penalties keep reliability stable while still using all weather dimensions.
+  const byWind = 1 - Math.min(0.2, Math.max(0, Number(obs.wind_speed || 0)) / 100);
+  const byVisibility = Number.isFinite(Number(obs.visibility))
+    ? Math.max(0.8, Math.min(1.0, Number(obs.visibility) / 12))
+    : 1.0;
+  const byPrecip = 1 - Math.min(0.15, Math.max(0, Number(obs.precipitation || 0)) / 20);
+  return Math.max(0.55, byCondition * byWind * byVisibility * byPrecip);
+}
+
 export function calculateWeatherAwareTime(
   uIdx: number,
   vIdx: number,
@@ -10,26 +81,17 @@ export function calculateWeatherAwareTime(
 ): { travelTime: number; cost: number; reliability: number } {
   const u = cities[uIdx];
   const v = cities[vIdx];
-  
-  let segment = roadSegments.find(
-    s => s.start_city_id === u.city_id && s.end_city_id === v.city_id
-  );
-  
+
+  const roadIndex = getRoadIndex(roadSegments || []);
+  const direct = roadIndex.get(roadKey(u.city_id, v.city_id));
+  const reverse = roadIndex.get(roadKey(v.city_id, u.city_id));
+  const segment = direct || reverse;
+
   let distance: number;
   let speedLimit: number;
-  
+
   if (!segment) {
-    const lat1 = u.latitude * Math.PI / 180;
-    const lon1 = u.longitude * Math.PI / 180;
-    const lat2 = v.latitude * Math.PI / 180;
-    const lon2 = v.longitude * Math.PI / 180;
-    const dLat = lat2 - lat1;
-    const dLon = lon2 - lon1;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1) * Math.cos(lat2) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    distance = 6371 * c;
+    distance = haversineKm(u.latitude, u.longitude, v.latitude, v.longitude);
     speedLimit = 100;
   } else {
     distance = segment.distance;
@@ -38,25 +100,16 @@ export function calculateWeatherAwareTime(
   
   const baseTime = distance / speedLimit * 60;
   
-  let weatherFactor = 1.0;
-  if (weatherData && weatherData.length > 0) {
-    for (const w of weatherData) {
-      if (w.city_id === u.city_id || w.city_id === v.city_id) {
-        if (w.weather_condition === 'rain') {
-          weatherFactor *= 0.85;
-        } else if (w.weather_condition === 'snow') {
-          weatherFactor *= 0.7;
-        } else if (w.weather_condition === 'fog') {
-          weatherFactor *= 0.9;
-        }
-      }
-    }
-  }
-  
+  const weatherIdx = getWeatherIndex(weatherData || []);
+  const wu = weatherIdx.get(u.city_id);
+  const wv = weatherIdx.get(v.city_id);
+  // Use both endpoints (mean) to avoid over-penalizing by repeated multiplications.
+  const weatherFactor = (observationFactor(wu) + observationFactor(wv)) / 2;
+
   const travelTime = baseTime / weatherFactor;
   const cost = travelTime;
   const reliability = weatherFactor;
-  
+
   return { travelTime, cost, reliability };
 }
 
